@@ -1,0 +1,6 @@
+set(CVRPSEP_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+file(GLOB CVRPSEP_SOURCE_LIST CONFIGURE_DEPENDS "${CVRPSEP_DIR}/source/*.cpp")
+set(CVRPSEP_INCLUDE_FOLDER "${CVRPSEP_DIR}/include")
+
+add_library(cvrpsep STATIC ${CVRPSEP_SOURCE_LIST})
+target_include_directories(cvrpsep PUBLIC ${CVRPSEP_INCLUDE_FOLDER})
