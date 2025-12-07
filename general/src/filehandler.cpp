@@ -69,33 +69,6 @@ bool readInstance(const Params &params, SVRPInstance &instance) {
                 instance.posx[v] = posx;
                 instance.posy[v] = posy;
 
-                DNode d_v = instance.d_g.addNode();
-                instance.d_posx[d_v] = posx;
-                instance.d_posy[d_v] = posy;
-
-                line = lines[++i];
-            }
-            i--;
-        }
-        // We use this section only if we are not using scenarios.
-        else if (line.find("DEMAND_SECTION") != std::string::npos) {
-            std::smatch match;
-            int id;
-            double demand;
-
-            line = lines[++i];
-            while (std::regex_search(
-                line, match, regex("\\s*([0-9]+)\\s*([0-9]+\\.?[0-9]*)\\s*"))) {
-                id = stoi(match.str(1));
-
-                demand = stof(match.str(2));
-
-                Node v = instance.g.nodeFromId(id - 1);
-                instance.demand[v] = demand;
-
-                DNode d_v = instance.d_g.nodeFromId(id - 1);
-                instance.d_demand[d_v] = demand;
-
                 line = lines[++i];
             }
             i--;
@@ -110,19 +83,12 @@ bool readInstance(const Params &params, SVRPInstance &instance) {
                 int k = 0;
 
                 Node source = instance.g.nodeFromId(j);
-                DNode d_source = instance.d_g.nodeFromId(j);
                 while (std::getline(ss, s, ' ')) {
                     Node target = instance.g.nodeFromId(k);
-                    DNode d_target = instance.d_g.nodeFromId(k);
                     if (k < instance.n) {
                         if (j < k) {
                             Edge e = instance.g.addEdge(source, target);
                             instance.weight[e] =
-                                std::round(stod(s) * roundFactor) / roundFactor;
-                        }
-                        if (j != k) {
-                            Arc a = instance.d_g.addArc(d_source, d_target);
-                            instance.d_weight[a] =
                                 std::round(stod(s) * roundFactor) / roundFactor;
                         }
                     }
@@ -145,7 +111,6 @@ bool readInstance(const Params &params, SVRPInstance &instance) {
                 int k = 0;
 
                 Node v = instance.g.nodeFromId(j);
-                DNode d_v = instance.d_g.nodeFromId(j);
                 double accDemand = 0.0;
                 while (std::getline(ss, s, ' ')) {
                     if (k < instance.nScenarios) {
@@ -160,8 +125,6 @@ bool readInstance(const Params &params, SVRPInstance &instance) {
                 // set the demand as the average
                 instance.demand[v] =
                     std::round(accDemand / instance.nScenarios);
-                instance.d_demand[d_v] =
-                    std::round(accDemand / instance.nScenarios);
                 line = lines[++i];
                 demands[j] = instance.demand[v];
             }
@@ -172,7 +135,7 @@ bool readInstance(const Params &params, SVRPInstance &instance) {
         i++;
     }
 
-    // add edges (it is always a complete graph)
+    // If necessary, add edges (it is always a complete graph).
     instance.m = (instance.n * (instance.n - 1)) / 2;
     if (!hasDistanceMatrixSection) {
         for (NodeIt v(instance.g); v != INVALID; ++v) {
@@ -185,60 +148,16 @@ bool readInstance(const Params &params, SVRPInstance &instance) {
                 }
             }
         }
-
-        for (DNodeIt v(instance.d_g); v != INVALID; ++v) {
-            for (DNodeIt u(instance.d_g); u != INVALID; ++u) {
-                if (instance.d_g.id(v) != instance.d_g.id(u)) {
-                    Arc a = instance.d_g.addArc(v, u);
-                    instance.d_weight[a] = std::round(
-                        hypot(abs(instance.d_posx[v] - instance.d_posx[u]),
-                              abs(instance.d_posy[v] - instance.d_posy[u])));
-                }
-            }
-        }
     }
 
     // Sort scenarios by their total demands.
     instance.sortScenarios();
-
-    // Set upper bound map.
-    double totalDemand = 0.0;
-    for (NodeIt v(instance.g); v != INVALID; ++v) {
-        totalDemand += instance.demand[v];
-    }
-
-    for (NodeIt v(instance.g); v != INVALID; ++v) {
-        double tmpDemand = totalDemand - instance.demand[v];
-        instance.upperBoundMap[v] =
-            std::ceil(tmpDemand / instance.capacity) <= instance.k - 1.0 ? 2
-                                                                         : 1;
-    }
 
     // depot
     instance.depot = 0;
 
     return true;
 } // namespace filehandler
-
-bool saveSolution(const SVRPSolution &sol, std::string outputName) {
-    std::ofstream myfile;
-    myfile.open(outputName);
-
-    if (!myfile) {
-        cerr << "Error writing to " << outputName << endl;
-        exit(0);
-    }
-
-    for (auto route : sol.routes) {
-        for (int i : route) {
-            myfile << to_string(i) << " ";
-        }
-        myfile << endl;
-    }
-
-    myfile.close();
-    return true;
-}
 
 bool addEntryToTable(const Params &params, const SVRPInstance &instance,
                      const SVRPSolution &solution) {
@@ -251,9 +170,6 @@ bool addEntryToTable(const Params &params, const SVRPInstance &instance,
     }
 
     std::string algorithm = "SVRP";
-    if (params.gendreauCuts) {
-        algorithm += "-Gendreau";
-    }
     if (params.sriCuts) {
         algorithm += "-SRI";
     }
@@ -262,21 +178,6 @@ bool addEntryToTable(const Params &params, const SVRPInstance &instance,
     }
     if (params.partialRouteCuts) {
         algorithm += "-PARTIAL_ROUTE";
-    }
-    if (params.alg == NODE) {
-        algorithm += "-NODE";
-    }
-    if (params.alg == NODE_SCENARIOS) {
-        algorithm += "-NODE+SCEN";
-    }
-    if (params.mipSeparation) {
-        algorithm += "-MIPHEUR";
-    }
-    if (params.benders) {
-        algorithm += "-BENDERS";
-    }
-    if (params.lagrangian) {
-        algorithm += "-LAG";
     }
     if (params.scenarioOptimalPRCuts) {
         algorithm += "-PR_SCENOPT_CUTS";
@@ -289,9 +190,6 @@ bool addEntryToTable(const Params &params, const SVRPInstance &instance,
     }
     if (params.sriFlowSeparation) {
         algorithm += "-FLOWSEP";
-    }
-    if (params.dualSetCut) {
-        algorithm += "-DUALSET";
     }
 
     data << algorithm << " , " << params.inputFile << " , " << solution.cost

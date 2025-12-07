@@ -1,8 +1,13 @@
 // =============================================================
+//
+//  Code was gently provided by Flavio K. Miyazawa.
+//  https://www.ic.unicamp.br/~fkm/courses.html
+//
+// =============================================================
+
 #ifndef MYGRAPHLIB_DEFINE
 #define MYGRAPHLIB_DEFINE
 
-#include "geompack.h"
 #include "mycolor.h"
 #include "myutils.h"
 #include <float.h>
@@ -243,32 +248,6 @@ bool GenerateVertexPositions(Digraph &g, ArcValueMap &custo, DNodePosMap &posx,
                              DNodePosMap &posy);
 
 void PrintGraph(Graph &g, NodeStringMap &vname, EdgeValueMap &graphweight);
-
-// Generate a triangulated Digraph, building the Delaunay
-// triangulation of random points. Each edge of the Delaunay triangulation
-// leads to two arcs (in both senses)
-// Uses the geompack program, available in
-// http://people.sc.fsu.edu/~jburkardt/cpp_src/geompack/geompack.html
-bool GenerateTriangulatedDigraph(
-    Digraph &g,
-    DNodeStringMap &vname, // name of the nodes
-    DNodePosMap &px,       // x-position of the nodes
-    DNodePosMap &py,       // y-position of the nodes
-    ArcValueMap &weight,   // weight of edges
-    int n,                 // number of nodes
-    double SizeX,          // coordinate x is a random number in [0,SizeX)
-    double SizeY);         // coordinate y is a random number in [0,SizeY)
-
-// the same as above, but for non-oriented edges
-bool GenerateTriangulatedGraph(
-    Graph &g,             // return with generated graph
-    NodeStringMap &vname, // return with name of the nodes
-    NodePosMap &px,       // return with x-position of the nodes
-    NodePosMap &py,       // return with y-position of the nodes
-    EdgeValueMap &weight, // return with weight of edges
-    int n,                // number of nodes
-    double SizeX,         // coordinate x is a random number in [0,SizeX)
-    double SizeY);        // coordinate y is a random number in [0,SizeY)
 
 class AdjacencyMatrix {
   public:

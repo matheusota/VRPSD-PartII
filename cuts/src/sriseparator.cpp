@@ -4,101 +4,6 @@ SRISeparator::SRISeparator(const SVRPInstance &instance, const Params &params,
                            CVRPSEPSeparator &cvrpsepSeparator)
     : instance(instance), params(params), cvrpsepSeparator(cvrpsepSeparator) {}
 
-int SRISeparator::flowSeparation(const EdgeValueMap &xValue,
-                                 const NodeVectorValueMap &yValue,
-                                 std::vector<CutData> &separatedCuts) {
-    // Creates a copy of the graph and add a source to it.
-    DNode depot = instance.d_g.nodeFromId(instance.depot);
-    double roundFactor = 1e6;
-    Digraph flowGraph;
-    DNodeDNodeMap nodeMap(instance.d_g);
-    DNodeDNodeMap nodeCrossMap(flowGraph);
-    ArcArcMap arcMap(instance.d_g);
-    ArcArcMap arcCrossMap(flowGraph);
-    digraphCopy(instance.d_g, flowGraph)
-        .nodeRef(nodeMap)
-        .nodeCrossRef(nodeCrossMap)
-        .arcRef(arcMap)
-        .arcCrossRef(arcCrossMap)
-        .run();
-
-    DNode newSource = flowGraph.addNode();
-    for (DNodeIt v(instance.d_g); v != INVALID; ++v) {
-        if (instance.d_g.id(v) != instance.depot) {
-            flowGraph.addArc(newSource, nodeMap[v]);
-        }
-    }
-
-    // Run MaxFlow-MinCut for each scenario.
-    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
-        // Create arc capacities map.
-        ArcIntMap capacityMap(flowGraph, 0);
-        for (ArcIt a(flowGraph); a != INVALID; ++a) {
-            DNode u = flowGraph.source(a);
-            DNode v = flowGraph.target(a);
-
-            if (u == newSource) {
-                assert(nodeCrossMap[v] != INVALID);
-                int id = instance.d_g.id(nodeCrossMap[v]);
-                assert(id >= 1 && id < instance.n);
-                Node v2 = instance.g.nodeFromId(id);
-                capacityMap[a] = static_cast<int>(std::round(
-                    instance.scenariosMatrix[id][scenarioId] * roundFactor));
-            } else {
-                assert(nodeCrossMap[u] != INVALID &&
-                       nodeCrossMap[v] != INVALID);
-                int id_u = instance.d_g.id(nodeCrossMap[u]);
-                int id_v = instance.d_g.id(nodeCrossMap[v]);
-                assert(id_u >= 0 && id_u < instance.n && id_v >= 0 &&
-                       id_v < instance.n);
-                Node u2 = instance.g.nodeFromId(id_u);
-                Node v2 = instance.g.nodeFromId(id_v);
-                Edge e = findEdge(instance.g, u2, v2);
-                assert(e != INVALID);
-
-                double capacityValue = (0.5 * instance.capacity) * xValue[e];
-                if (id_v == instance.depot) {
-                    capacityValue += instance.capacity * yValue[u2][scenarioId];
-                }
-                capacityMap[a] =
-                    static_cast<int>(std::round(capacityValue * roundFactor));
-            }
-        }
-
-        // Run max-flow.
-        Preflow<Digraph, ArcIntMap> preflow(flowGraph, capacityMap, newSource,
-                                            nodeMap[depot]);
-        preflow.run();
-
-        // Get total scenarioDemand.
-        double scenarioDemand = 0.0;
-        for (int id = 1; id < instance.n; id++) {
-            scenarioDemand += instance.scenariosMatrix[id][scenarioId];
-        }
-
-        // Found violated cut, so we get customers in the cut.
-        if (preflow.flowValue() <= scenarioDemand * roundFactor - 10) {
-            std::vector<int> customers;
-
-            for (DNodeIt v(instance.d_g); v != INVALID; ++v) {
-                if (preflow.minCut(nodeMap[v])) {
-                    int id = instance.d_g.id(v);
-                    assert(id >= 1 && id < instance.n);
-                    customers.push_back(id);
-                }
-            }
-
-            int addedCuts =
-                addSRIFromCustomerSet(xValue, yValue, customers, separatedCuts);
-
-            assert(addedCuts >= 1);
-            return addedCuts;
-        }
-    }
-
-    return 0;
-}
-
 int SRISeparator::heuristicSeparation(const EdgeValueMap &xValue,
                                       const NodeVectorValueMap &yValue,
                                       std::vector<CutData> &separatedCuts) {
@@ -198,39 +103,6 @@ int SRISeparator::separateSRIFromCustomerSet(
     return addedCuts;
 }
 
-int SRISeparator::integerSeparation(const EdgeValueMap &xValue,
-                                    const NodeVectorValueMap &yValue,
-                                    std::vector<CutData> &separatedCuts) {
-    auto started = chrono::high_resolution_clock::now();
-
-    // This should only be called for integer solutions.
-    EdgeIntMap xIntMap(instance.g);
-
-    for (EdgeIt e(instance.g); e != INVALID; ++e) {
-        assert(std::abs(xValue[e] - std::round(xValue[e])) <=
-               EpsForIntegrality);
-        xIntMap[e] = static_cast<int>(std::round(xValue[e]));
-    }
-
-    // Get routes.
-    SVRPSolution solution;
-    solution.setRoutesFromSolution(instance, xIntMap);
-
-    // Call separation for each route.
-    int addedCuts = 0;
-    for (const auto &route : solution.routes) {
-        addedCuts += addSRICutsFromRoute(xValue, yValue, route, separatedCuts);
-    }
-
-    auto done = chrono::high_resolution_clock::now();
-    time += static_cast<double>(
-                chrono::duration_cast<chrono::microseconds>(done - started)
-                    .count()) /
-            1e6;
-
-    return addedCuts;
-}
-
 int SRISeparator::addSRIFromCustomerSet(const EdgeValueMap &xValue,
                                         const NodeVectorValueMap &yValue,
                                         const std::vector<int> &customers,
@@ -292,7 +164,7 @@ int SRISeparator::addCut(const EdgeValueMap &xValue,
     for (auto &[scenarioId, bound] : scenarioBounds) {
         assert(scenarioId >= 0 && scenarioId < instance.nScenarios);
         cutData.RHS += bound - static_cast<int>(customers.size());
-        cutData.scenarioPairs.push_back(std::make_pair(scenarioId, 1.0));
+        cutData.scenarioPairs.push_back({scenarioId, 1.0});
 
         for (const int id : customers) {
             assert(id >= 1 && id < instance.n);
@@ -307,14 +179,14 @@ int SRISeparator::addCut(const EdgeValueMap &xValue,
             Node v = instance.g.nodeFromId(customers[j]);
             Edge e = findEdge(instance.g, u, v);
             assert(e != INVALID);
-            cutData.edgePairs.push_back(std::make_pair(e, -nScenariosCut));
+            cutData.edgePairs.push_back({e, -nScenariosCut});
             cutData.LHS += -nScenariosCut * xValue[e];
         }
     }
 
     for (const int id : customers) {
         assert(id >= 1 && id < instance.n);
-        cutData.nodePairs.push_back(std::make_pair(id, 1.0));
+        cutData.nodePairs.push_back({id, 1.0});
         cutData.customers.push_back(id);
     }
 
@@ -491,8 +363,7 @@ int SRISeparator::addSRICutsFromRoute(const EdgeValueMap &xValue,
                               instance.capacity);
                 double LHS = ySum[scenarioId] + 1.0;
                 if (currBound >= LHS + EpsForIntegrality) {
-                    scenarioBounds.push_back(
-                        std::make_pair(scenarioId, currBound));
+                    scenarioBounds.push_back({scenarioId, currBound});
                 }
             }
 
@@ -510,190 +381,4 @@ int SRISeparator::addSRICutsFromRoute(const EdgeValueMap &xValue,
     }
 
     return addedCuts;
-}
-
-int SRISeparator::integerSeparation2(const EdgeValueMap &xValue,
-                                     const NodeValueMap &yValue,
-                                     std::vector<CutData> &separatedCuts) {
-    // This should only be called for integer solutions.
-    EdgeIntMap xIntMap(instance.g);
-
-    for (EdgeIt e(instance.g); e != INVALID; ++e) {
-        assert(std::abs(xValue[e] - std::round(xValue[e])) <=
-               EpsForIntegrality);
-        xIntMap[e] = static_cast<int>(std::round(xValue[e]));
-    }
-
-    // Get routes.
-    SVRPSolution solution;
-    solution.setRoutesFromSolution(instance, xIntMap);
-
-    // Call separation for each route.
-    int addedCuts = 0;
-    for (const auto &route : solution.routes) {
-        double recourseCost =
-            instance.optimalRecourseHelper.getRouteRecourseCost(route);
-        double LHS = 0.0;
-        for (int id : route) {
-            Node v = instance.g.nodeFromId(id);
-            LHS += instance.getEdgeRecourseCost(v) * yValue[v];
-        }
-
-        if (LHS <= recourseCost - EpsForIntegrality) {
-            addedCuts += addBendersCut(xValue, yValue, route, separatedCuts);
-            if (addedCuts > 0) {
-                break;
-            }
-        }
-    }
-
-    return addedCuts;
-}
-
-int SRISeparator::addBendersCut(const EdgeValueMap &xValue,
-                                const NodeValueMap &yValue,
-                                const std::vector<int> &route,
-                                std::vector<CutData> &separatedCuts) {
-    // Get tight subroutes for each scenario.
-    std::vector<std::vector<std::unordered_set<int>>> tightSubroutes;
-    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
-        std::vector<std::unordered_set<int>> subroutes;
-        instance.optimalRecourseHelper.getRouteRecourseCostInScenarioWithLP(
-            route, scenarioId, subroutes);
-        tightSubroutes.push_back(subroutes);
-    }
-
-    GRBEnv env(true);
-    env.set(GRB_IntParam_OutputFlag, 0);
-    env.start();
-    GRBModel model(env);
-
-    model.set(GRB_StringAttr_ModelName, "GurobiModel");
-    model.set(GRB_IntAttr_ModelSense, GRB_MAXIMIZE);
-    model.set(GRB_DoubleParam_TimeLimit, 300);
-    model.set(GRB_IntParam_Threads, 1);
-    env.set(GRB_IntParam_LogToConsole, 0);
-
-    // Create alpha variables for each scenario.
-    std::vector<std::vector<GRBVar>> alpha;
-
-    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
-        alpha.push_back(std::vector<GRBVar>(tightSubroutes[scenarioId].size()));
-        for (size_t r = 0; r < tightSubroutes[scenarioId].size(); r++) {
-            alpha[scenarioId][r] =
-                model.addVar(0.0, 1.0, 1.0, GRB_CONTINUOUS,
-                             "alpha_" + std::to_string(scenarioId) + "_" +
-                                 std::to_string(r));
-        }
-    }
-
-    // Create beta variables for each customer.
-    std::vector<GRBVar> beta(route.size());
-
-    for (size_t i = 0; i < route.size(); i++) {
-        Node v = instance.g.nodeFromId(route[i]);
-        beta[i] = model.addVar(0.0, GRB_INFINITY, -yValue[v], GRB_CONTINUOUS,
-                               "beta_" + std::to_string(route[i]));
-    }
-    model.update();
-
-    // Add subroute constraints.
-    for (size_t i = 0; i < route.size(); i++) {
-        for (int scenarioId = 0; scenarioId < instance.nScenarios;
-             scenarioId++) {
-            GRBLinExpr expr = 0.0;
-
-            for (size_t r = 0; r < tightSubroutes[scenarioId].size(); r++) {
-                if (tightSubroutes[scenarioId][r].find(route[i]) !=
-                    tightSubroutes[scenarioId][r].end()) {
-                    expr += alpha[scenarioId][r];
-                }
-            }
-
-            model.addConstr(expr <= beta[i]);
-        }
-    }
-
-    model.update();
-    model.optimize();
-
-    if (model.get(GRB_IntAttr_Status) != GRB_OPTIMAL) {
-        return 0;
-    }
-
-    double objVal = model.get(GRB_DoubleAttr_ObjVal);
-    if (objVal <= EpsForIntegrality) {
-        std::cout << "No Benders cut to separate." << std::endl;
-        return 0;
-    }
-
-    // Construct cut.
-    EdgeValueMap edgeCoefs(instance.g, 0.0);
-    NodeValueMap nodeCoefs(instance.g, 0.0);
-    double RHS = 0.0;
-    double tmp = 0.0;
-
-    for (size_t i = 0; i < route.size(); i++) {
-        Node v = instance.g.nodeFromId(route[i]);
-        nodeCoefs[v] = beta[i].get(GRB_DoubleAttr_X);
-    }
-
-    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
-        for (size_t r = 0; r < tightSubroutes[scenarioId].size(); r++) {
-            double currAlpha = alpha[scenarioId][r].get(GRB_DoubleAttr_X);
-
-            if (currAlpha >= EpsForIntegrality) {
-                RHS += currAlpha *
-                       (2.0 - static_cast<double>(
-                                  tightSubroutes[scenarioId][r].size()));
-                tmp -=
-                    static_cast<double>(tightSubroutes[scenarioId][r].size());
-
-                for (int id1 : tightSubroutes[scenarioId][r]) {
-                    for (int id2 : tightSubroutes[scenarioId][r]) {
-                        if (id1 != id2) {
-                            Node u = instance.g.nodeFromId(id1);
-                            Node v = instance.g.nodeFromId(id2);
-                            Edge e = findEdge(instance.g, u, v);
-                            edgeCoefs[e] -= 0.5 * currAlpha;
-                            tmp += 0.5 * currAlpha * xValue[e];
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    separatedCuts.emplace_back(CutData());
-    CutData &cutData = separatedCuts.back();
-    cutData.RHS = RHS;
-    cutData.sense = '>';
-    cutData.name = "BendersCut";
-    cutData.LHS = 0.0;
-
-    for (const int id : route) {
-        assert(id >= 1 && id < instance.n);
-        Node v = instance.g.nodeFromId(id);
-        cutData.LHS += nodeCoefs[v] * yValue[v];
-        cutData.nodePairs.push_back(std::make_pair(id, nodeCoefs[v]));
-        cutData.customers.push_back(id);
-    }
-
-    for (size_t i = 0; i < route.size() - 1; i++) {
-        Node u = instance.g.nodeFromId(route[i]);
-        Node v = instance.g.nodeFromId(route[i + 1]);
-        Edge e = findEdge(instance.g, u, v);
-        assert(e != INVALID);
-        cutData.edgePairs.push_back(std::make_pair(e, edgeCoefs[e]));
-        cutData.LHS += edgeCoefs[e] * xValue[e];
-    }
-
-    if (cutData.LHS >= cutData.RHS - EpsForIntegrality) {
-        separatedCuts.pop_back();
-        return 0;
-    } else {
-        cutData.violation = cutData.RHS - cutData.LHS;
-        nCuts++;
-        return 1;
-    }
 }

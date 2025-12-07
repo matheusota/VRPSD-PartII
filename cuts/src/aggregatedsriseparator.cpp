@@ -17,6 +17,28 @@ AggregatedSRISeparator::AggregatedSRISeparator(const SVRPInstance &instance,
         topScenarios.push_back(instance.sortedScenarios[s].second);
     }
     criticalScenarios.insert(topScenarios);
+
+    // Create the digraph for the network flow heuristic.
+    for (NodeIt v(instance.g); v != INVALID; ++v) {
+        flowGraph.addNode();
+    }
+    for (EdgeIt e(instance.g); e != INVALID; ++e) {
+        Node u = instance.g.u(e);
+        Node v = instance.g.v(e);
+        DNode du = flowGraph.nodeFromId(instance.g.id(u));
+        DNode dv = flowGraph.nodeFromId(instance.g.id(v));
+        flowGraph.addArc(du, dv);
+        flowGraph.addArc(dv, du);
+    }
+
+    // Artificial source and arcs.
+    DNode newSource = flowGraph.addNode();
+    for (NodeIt v(instance.g); v != INVALID; ++v) {
+        if (instance.g.id(v) != instance.depot) {
+            DNode dv = flowGraph.nodeFromId(instance.g.id(v));
+            flowGraph.addArc(newSource, dv);
+        }
+    }
 }
 
 void AggregatedSRISeparator::buildSupportGraph(const EdgeValueMap &xValue,
@@ -137,15 +159,10 @@ int AggregatedSRISeparator::addCutFromSet(const EdgeValueMap &xValue,
                                           std::vector<CutData> &separatedCuts) {
     auto started = chrono::high_resolution_clock::now();
 
-    int addedCuts = 0;
-
-    if (params.dualSetCut) {
-        addedCuts +=
-            addCutFromSetWithDual(xValue, yValue, customers, separatedCuts);
-    } else {
-        addedCuts +=
-            addCutFromSetSimple(xValue, yValue, customers, separatedCuts);
-    }
+    int addedCuts =
+        addCutFromSetSimple(xValue, yValue, customers, separatedCuts);
+    // addedCuts +=
+    //     addCutFromSetWithDual(xValue, yValue, customers, separatedCuts);
 
     auto done = chrono::high_resolution_clock::now();
     time += static_cast<double>(
@@ -227,7 +244,7 @@ int AggregatedSRISeparator::addCutFromSetSimple(
             Node v = instance.g.nodeFromId(customers[j]);
             Edge e = findEdge(instance.g, u, v);
             assert(e != INVALID);
-            cutData.edgePairs.push_back(std::make_pair(e, -countScenarios));
+            cutData.edgePairs.push_back({e, -countScenarios});
             cutData.LHS += -countScenarios * xValue[e];
         }
     }
@@ -235,11 +252,8 @@ int AggregatedSRISeparator::addCutFromSetSimple(
     for (const int id : customers) {
         Node v = instance.g.nodeFromId(id);
         assert(v != INVALID);
-        cutData.nodePairs.push_back(
-            std::make_pair(id, static_cast<double>(instance.nScenarios) /
-                                   instance.getEdgeRecourseCost(v)));
-        cutData.LHS +=
-            (instance.nScenarios * yValue[v]) / instance.getEdgeRecourseCost(v);
+        cutData.nodePairs.push_back({id, 1.0});
+        cutData.LHS += yValue[v];
         cutData.customers.push_back(id);
     }
 
@@ -335,7 +349,7 @@ int AggregatedSRISeparator::addCutFromSetWithDual(
             Node v = instance.g.nodeFromId(customers[j]);
             Edge e = findEdge(instance.g, u, v);
             assert(e != INVALID);
-            cutData.edgePairs.push_back(std::make_pair(e, -alpha));
+            cutData.edgePairs.push_back({e, -alpha});
             cutData.LHS += -alpha * xValue[e];
         }
     }
@@ -343,12 +357,8 @@ int AggregatedSRISeparator::addCutFromSetWithDual(
     for (const int id : customers) {
         Node v = instance.g.nodeFromId(id);
         assert(v != INVALID);
-        cutData.nodePairs.push_back(
-            std::make_pair(id, (betaCoefs[v] * instance.nScenarios) /
-                                   instance.getEdgeRecourseCost(v)));
-        cutData.LHS += ((betaCoefs[v] * instance.nScenarios) /
-                        instance.getEdgeRecourseCost(v)) *
-                       yValue[v];
+        cutData.nodePairs.push_back({id, betaCoefs[v]});
+        cutData.LHS += betaCoefs[v] * yValue[v];
         cutData.customers.push_back(id);
     }
 
@@ -388,38 +398,12 @@ int AggregatedSRISeparator::flowHeuristicSeparation(
 int AggregatedSRISeparator::flowSeparationFromScenarios(
     const EdgeValueMap &xValue, const NodeValueMap &recourseValue,
     const std::vector<int> &scenarios, std::vector<CutData> &separatedCuts) {
-    // Creates a copy of the graph and add a source to it.
-    DNode depot = instance.d_g.nodeFromId(instance.depot);
-    const double roundFactor = 1e3;
-    Digraph flowGraph;
-    DNodeDNodeMap nodeMap(instance.d_g);
-    DNodeDNodeMap nodeCrossMap(flowGraph);
-    ArcArcMap arcMap(instance.d_g);
-    ArcArcMap arcCrossMap(flowGraph);
-    digraphCopy(instance.d_g, flowGraph)
-        .nodeRef(nodeMap)
-        .nodeCrossRef(nodeCrossMap)
-        .arcRef(arcMap)
-        .arcCrossRef(arcCrossMap)
-        .run();
-
-    DNode newSource = flowGraph.addNode();
-    for (DNodeIt v(instance.d_g); v != INVALID; ++v) {
-        if (v != depot) {
-            flowGraph.addArc(newSource, nodeMap[v]);
-        }
-    }
-
-    // Convert from recourse values to "average aggregated" ys.
-    // Also get total demand.
     NodeValueMap y(instance.g, 0.0);
     for (NodeIt v(instance.g); v != INVALID; ++v) {
         if (instance.g.id(v) != instance.depot) {
-            double nodeRecourse = instance.getEdgeRecourseCost(v);
-            y[v] = nodeRecourse <= 1e-6
-                       ? instance.nScenarios
-                       : (recourseValue[v] / nodeRecourse) *
-                             static_cast<double>(instance.nScenarios);
+            y[v] = recourseValue[v] <= 1e-6 ? instance.nScenarios
+                                            : recourseValue[v];
+            // We divide here because we take the average.
             y[v] /= static_cast<double>(scenarios.size());
         }
     }
@@ -441,60 +425,56 @@ int AggregatedSRISeparator::flowSeparationFromScenarios(
     // Create arc capacities map.
     ArcIntMap capacityMap(flowGraph, 0);
     for (ArcIt a(flowGraph); a != INVALID; ++a) {
-        DNode u = flowGraph.source(a);
-        DNode v = flowGraph.target(a);
+        DNode du = flowGraph.source(a);
+        DNode dv = flowGraph.target(a);
 
-        if (u == newSource) {
-            assert(nodeCrossMap[v] != INVALID);
-            int id = instance.d_g.id(nodeCrossMap[v]);
+        if (du == newSource) {
+            int id = flowGraph.id(dv);
             assert(id >= 1 && id < instance.n);
-            Node v2 = instance.g.nodeFromId(id);
+            Node v = instance.g.nodeFromId(id);
             capacityMap[a] =
-                static_cast<int>(std::round(topDemands[v2] * roundFactor));
+                static_cast<int>(std::round(topDemands[v] * flowRoundFactor));
         } else {
-            assert(nodeCrossMap[u] != INVALID && nodeCrossMap[v] != INVALID);
-            int id_u = instance.d_g.id(nodeCrossMap[u]);
-            int id_v = instance.d_g.id(nodeCrossMap[v]);
-            assert(id_u >= 0 && id_u < instance.n && id_v >= 0 &&
-                   id_v < instance.n);
-            Node u2 = instance.g.nodeFromId(id_u);
-            Node v2 = instance.g.nodeFromId(id_v);
-            Edge e = findEdge(instance.g, u2, v2);
+            int idu = flowGraph.id(du);
+            int idv = flowGraph.id(dv);
+            assert(idu >= 0 && idu < instance.n && idv >= 0 &&
+                   idv < instance.n);
+            Node u = instance.g.nodeFromId(idu);
+            Node v = instance.g.nodeFromId(idv);
+            Edge e = findEdge(instance.g, u, v);
             assert(e != INVALID);
 
             double capacityValue = (0.5 * instance.capacity) * xValue[e];
-            if (id_v == instance.depot) {
-                capacityValue += instance.capacity * y[u2];
+            if (idv == instance.depot) {
+                capacityValue += instance.capacity * y[u];
             }
             capacityMap[a] =
-                static_cast<int>(std::round(capacityValue * roundFactor));
+                static_cast<int>(std::round(capacityValue * flowRoundFactor));
         }
     }
 
     // Run max-flow.
     Preflow<Digraph, ArcIntMap> preflow(flowGraph, capacityMap, newSource,
-                                        nodeMap[depot]);
+                                        flowGraph.nodeFromId(instance.depot));
     preflow.run();
 
     // Found violated cut, so we get customers in the cut.
-    if (preflow.flowValue() <= totalDemand * roundFactor - 10) {
+    if (preflow.flowValue() <= totalDemand * flowRoundFactor - 10) {
         std::vector<int> customers;
 
-        double setDemand = 0.0;
         double setY = 0.0;
-        for (DNodeIt v(instance.d_g); v != INVALID; ++v) {
-            if (preflow.minCut(nodeMap[v])) {
-                int id = instance.d_g.id(v);
+        for (DNodeIt v(flowGraph); v != INVALID; ++v) {
+            if (preflow.minCut(v) && v != newSource) {
+                int id = flowGraph.id(v);
                 assert(id >= 1 && id < instance.n);
                 customers.push_back(id);
-                setDemand += instance.demand[instance.g.nodeFromId(id)];
                 setY += y[instance.g.nodeFromId(id)];
             }
         }
 
         int addedCuts =
             addCutFromSet(xValue, recourseValue, customers, separatedCuts);
-        // assert(addedCuts >= 1);
+        assert(addedCuts == 1);
         return addedCuts;
     }
 
@@ -571,11 +551,9 @@ int AggregatedSRISeparator::mipSeparation(const EdgeValueMap &xValue,
 
         // Need to treat zero recourse value.
         double coef = 0.0;
-        double recourseCost = instance.getEdgeRecourseCost(v);
-
-        if (recourseCost >= 1e-6) {
-            coef = (recourseValue[v] * instance.nScenarios) / recourseCost;
-        } else if (recourseCost <= 1e-6 && recourseValue[v] >= 1e-6) {
+        if (instance.getEdgeRecourseCost(v) >= 1e-6) {
+            coef = recourseValue[v];
+        } else {
             model.addConstr(customersBinary[v] == 0);
         }
 

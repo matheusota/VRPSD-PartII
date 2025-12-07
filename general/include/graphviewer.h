@@ -11,8 +11,6 @@
 namespace graphviewer {
 void viewVRPSolution(const SVRPInstance &instance, const EdgeValueMap &x,
                      const std::string title);
-void viewVRPSolution(const SVRPInstance &instance, const ArcValueMap &x,
-                     const std::string title);
 void viewVRPSolution(const SVRPInstance &instance, const SVRPSolution &solution,
                      const std::string title);
 void viewSupportWithNodeAndEdgeMap(Graph &g, EdgeValueMap &x, NodePosMap &posx,

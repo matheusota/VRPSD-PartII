@@ -19,13 +19,12 @@
 #include "params.h"
 #include "cvrpsepseparator.h"
 #include "sriseparator.h"
-#include "nodescenarioscallback.h"
 #include "cutpool.h"
 
 class NodeScenariosModel {
   public:
     NodeScenariosModel(const SVRPInstance &instance, const Params &params,
-                       CutPool *cutPool_ = nullptr);
+                       CutPool &cutPool);
 
     bool solve(SVRPSolution &solution);
     void setPrimalSolution(const SVRPSolution &primalSolution);
@@ -33,7 +32,7 @@ class NodeScenariosModel {
   private:
     const SVRPInstance &instance;
     const Params &params;
-    CutPool *cutPool;
+    CutPool &cutPool;
 
     // Gurobi stuff.
     GRBEnv env;
@@ -50,7 +49,6 @@ class NodeScenariosModel {
 
     CVRPSEPSeparator cvrpsepSeparator;
     SRISeparator sriSeparator;
-    NodeScenariosCallback callback;
 
     void setBasicModel();
     void solveRootLP(
@@ -58,7 +56,6 @@ class NodeScenariosModel {
     int addSeparatedCuts(EdgeValueMap &xValue, NodeVectorValueMap &yValue,
                          EdgeValueMap &candX, NodeVectorValueMap &candY,
                          std::vector<CutData> &separatedCuts);
-    void setSolution(SVRPSolution &solution);
     double buildLagrangianCutAndGetDualObj();
     void solveLPAndUpdateSolutions(EdgeValueMap &xValue,
                                    NodeVectorValueMap &yValue,

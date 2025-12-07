@@ -1,5 +1,50 @@
 #include "svrpsolution.h"
 
+void SVRPSolution::print() const {
+    std::cout << "Solved!" << std::endl;
+    std::cout << "Solution Cost: " << cost << std::endl;
+    std::cout << "Optimal Recourse Cost: " << optimalRecourseCost << std::endl;
+    std::cout << "Recourse Cost: " << recourseCost << std::endl;
+    std::cout << "Time: " << time << "s" << std::endl;
+    std::cout << "Nodes explored: " << nodesExplored << std::endl;
+    std::cout << "CVRPSEP Time: " << cvrpsepTime << std::endl;
+    std::cout << "Parada Time: " << paradaTime << std::endl;
+    std::cout << "Partial Route Time: " << partialRouteTime << std::endl;
+    std::cout << "SRI Time: " << sriTime << std::endl;
+    std::cout << "Aggregated SRI Time: " << aggregatedSriTime << std::endl;
+    std::cout << "Routes:" << std::endl;
+    for (const auto &route : routes) {
+        for (int i : route) {
+            std::cout << std::to_string(i) << " ";
+        }
+        std::cout << std::endl;
+    }
+}
+
+void SVRPSolution::save(std::string outputName) const {
+    std::ofstream myfile;
+    myfile.open(outputName);
+
+    if (!myfile) {
+        cerr << "Error writing solution to " << outputName << endl;
+        exit(0);
+    }
+
+    if (upperBound >= 1e6) {
+        myfile << "No solution found." << endl;
+        return;
+    }
+
+    for (auto route : routes) {
+        for (int i : route) {
+            myfile << to_string(i) << " ";
+        }
+        myfile << endl;
+    }
+
+    myfile.close();
+}
+
 void SVRPSolution::setRoutesFromSolution(const SVRPInstance &instance,
                                          EdgeIntMap &edgeCount) {
     std::vector<int> currRoute;
@@ -42,44 +87,6 @@ void SVRPSolution::setRoutesFromSolution(const SVRPInstance &instance,
     for (auto route : routes) {
         if (instance.classicalRecourseHelper.isRouteReversed(route)) {
             std::reverse(route.begin(), route.end());
-        }
-    }
-}
-
-void SVRPSolution::setRoutesFromSolution(const SVRPInstance &instance,
-                                         ArcIntMap &edgeCount) {
-    std::vector<int> currRoute;
-    DNode depot = instance.d_g.nodeFromId(0);
-    DNode curr = depot;
-    DNode next;
-    bool hasNext = true;
-    routes.clear();
-
-    while (hasNext) {
-        hasNext = false;
-
-        // get next node
-        for (OutArcIt e(instance.d_g, curr); e != INVALID; ++e) {
-            if (edgeCount[e] > 0) {
-                next = instance.d_g.target(e);
-                edgeCount[e]--;
-                hasNext = true;
-                break;
-            }
-        }
-
-        if (hasNext) {
-            // back to depot
-            if (next == depot) {
-                routes.push_back(currRoute);
-                currRoute.clear();
-            }
-            // adding vertex to curr route
-            else {
-                currRoute.push_back(instance.d_g.id(next));
-            }
-
-            curr = next;
         }
     }
 }

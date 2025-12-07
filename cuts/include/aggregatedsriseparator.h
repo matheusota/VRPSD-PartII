@@ -26,7 +26,6 @@ class AggregatedSRISeparator {
     int addCutFromSet(const EdgeValueMap &xValue, const NodeValueMap &yValue,
                       const std::vector<int> &customers,
                       std::vector<CutData> &separatedCuts);
-
     int cvrpsepHeuristicSeparation(const EdgeValueMap &xValue,
                                    const NodeValueMap &recourseValue,
                                    std::vector<CutData> &separatedCuts);
@@ -36,7 +35,6 @@ class AggregatedSRISeparator {
     int mipSeparation(const EdgeValueMap &xValue,
                       const NodeValueMap &recourseValue,
                       std::vector<CutData> &separatedCuts);
-
     void addCriticalScenarios(const std::vector<int> scenarioIds) {
         criticalScenarios.insert(scenarioIds);
     }
@@ -47,25 +45,25 @@ class AggregatedSRISeparator {
     double EpsForIntegrality = 1e-4;
     OptimalRecourseHelper optimalRecourseHelper;
 
+    // Digraph for the network flow heuristic.
+    double flowRoundFactor = 1e6;
+    Digraph flowGraph;
+    DNode newSource;
+
     // Use this to store critical scenarios when calling flow separation.
     std::unordered_set<std::vector<int>, hash_vector> criticalScenarios;
 
     void buildSupportGraph(const EdgeValueMap &xValue, Graph &supportGraph,
                            EdgeValueMap &supportXValue,
                            NodeIntMap &componentsMap, int &nComponents);
-    // void updateCoefsFromDual(double dual, const std::vector<int> &customers,
-    //                          NodeValueMap &yCoefs, EdgeValueMap &xCoefs);
-
     int flowSeparationFromScenarios(const EdgeValueMap &xValue,
                                     const NodeValueMap &recourseValue,
                                     const std::vector<int> &scenarios,
                                     std::vector<CutData> &separatedCuts);
-
     int addCutFromSetSimple(const EdgeValueMap &xValue,
                             const NodeValueMap &yValue,
                             const std::vector<int> &customers,
                             std::vector<CutData> &separatedCuts);
-
     int addCutFromSetWithDual(const EdgeValueMap &xValue,
                               const NodeValueMap &yValue,
                               const std::vector<int> &customers,

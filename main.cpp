@@ -1,10 +1,6 @@
 #include <climits> // For INT_MAX
 #include <ctime>   // For CLOCKS_PER_SEC
 #include <set>
-#if __cplusplus >= 201103L
-#else
-#include <tr1/unordered_map>
-#endif
 #include "main.h"
 
 int main(int argc, const char *argv[]) {
@@ -17,73 +13,48 @@ int main(int argc, const char *argv[]) {
         cerr << "Could not read input file " << params.inputFile << endl;
         std::exit(1);
     }
-
-    // Initialize a solution.
-    SVRPSolution solution;
-    cout << "Input Description:" << endl;
-    cout << stringhelper::instanceDescriptionAsString(instance) << endl;
+    instance.print();
 
     // Run the algorithm.
     auto started = chrono::high_resolution_clock::now();
 
-    // First we run the base algorithm.
+    // If using In-Out separation, we first run the base algorithm.
     Params newParams = params;
-    newParams.timeLimit = 30;
-    // newParams.partialRouteCuts = true;
-    newParams.paradaSet = false;
-    newParams.sriCuts = true;
-    newParams.lagrangian = false;
-    newParams.basicVRPSD = false;
-    newParams.scenarioOptimalPRCuts = false;
-    NodeRecourseModel nodeRecourseModel1(instance, newParams);
     SVRPSolution heuristicSolution;
     if (params.inOut) {
+        newParams.timeLimit = 30;
+        newParams.paradaSet = false;
+        newParams.sriCuts = true;
+        newParams.basicVRPSD = false;
+        newParams.scenarioOptimalPRCuts = false;
+        NodeRecourseModel nodeRecourseModel1(instance, newParams);
         nodeRecourseModel1.solve(heuristicSolution);
     }
 
-    // Now we run the desired model.
+    // Run the high-dimensional model.
+    SVRPSolution solution;
     CutPool *cutPool = NULL;
-
-    switch (params.alg) {
-    case NODE: {
-        if (params.lagrangian) {
-            // Get cut pool from scenarios model.
-            cutPool = new CutPool();
-            newParams.sriCuts = true;
-            newParams.lagrangian = true;
-            newParams.timeLimit = 60;
-            newParams.basicVRPSD = params.basicVRPSD;
-            newParams.partialRouteCuts = false;
-            newParams.paradaSet = false;
-            NodeScenariosModel nodeScenariosModel(instance, newParams, cutPool);
-            if (heuristicSolution.upperBound < 1e6) {
-                nodeScenariosModel.setPrimalSolution(heuristicSolution);
-            }
-            nodeScenariosModel.solve(solution);
-            cutPool->rootBound = solution.rootBound;
-        }
-
-        // Solve with the initial pool.
-        NodeRecourseModel nodeRecourseModel2(instance, params, cutPool);
+    if (params.sriCuts) {
+        cutPool = new CutPool();
+        newParams.timeLimit = 60;
+        newParams.basicVRPSD = params.basicVRPSD;
+        NodeScenariosModel nodeScenariosModel(instance, newParams, *cutPool);
         if (heuristicSolution.upperBound < 1e6) {
-            nodeRecourseModel2.setWarmStart(heuristicSolution);
+            nodeScenariosModel.setPrimalSolution(heuristicSolution);
         }
-        nodeRecourseModel2.solve(solution);
-
-        if (cutPool != NULL) {
-            delete cutPool;
-        }
-        break;
-    }
-    case NODE_SCENARIOS: {
-        NodeScenariosModel nodeScenariosModel(instance, params);
         nodeScenariosModel.solve(solution);
-        break;
+        cutPool->rootBound = solution.rootBound;
     }
-    default: {
-        std::cout << "Invalid algorithm." << std::endl;
-        exit(1);
+
+    // Solve the projected model.
+    NodeRecourseModel nodeRecourseModel2(instance, params, cutPool);
+    if (heuristicSolution.upperBound < 1e6) {
+        nodeRecourseModel2.setWarmStart(heuristicSolution);
     }
+    nodeRecourseModel2.solve(solution);
+
+    if (cutPool != NULL) {
+        delete cutPool;
     }
 
     auto done = chrono::high_resolution_clock::now();
@@ -93,17 +64,15 @@ int main(int argc, const char *argv[]) {
                 .count()) /
         1000.0;
 
-    printSolutionDetails(solution);
+    solution.print();
 
     // Create output as desired.
     if (params.showGraph) {
         graphviewer::viewVRPSolution(instance, solution, "SVRP solution");
     } else {
         if (params.outputFile.size() > 0) {
-            filehandler::saveSolution(solution, params.outputFile);
+            solution.save(params.outputFile);
         }
-
-        // write to csv table
         if (params.tableName.size() > 0) {
             filehandler::addEntryToTable(params, instance, solution);
         }
@@ -132,22 +101,12 @@ Params getParams(int argc, const char *argv[]) {
             cxxopts::value<int>(params.k))(
             "readk", "Read number of routes from input file",
             cxxopts::value<bool>(params.readKfromFile)->default_value("true"))(
-            "gendreau", "Use Gendreau et al. optimality cuts.",
-            cxxopts::value<bool>(params.gendreauCuts)->default_value("false"))(
-            "node_scenarios", "Use node-scenarios formulation.",
-            cxxopts::value<bool>()->default_value("false"))(
-            "node", "Use node-recourse formulation.",
-            cxxopts::value<bool>()->default_value("false"))(
             "sri", "Use SRI cuts.",
             cxxopts::value<bool>(params.sriCuts)->default_value("false"))(
-            "partial_route", "Use partial route optimality cuts.",
+            "pr", "Use partial route cuts.",
             cxxopts::value<bool>(params.partialRouteCuts)
                 ->default_value("false"))(
-            "mip", "Heuristic MIP separation of scenario cuts.",
-            cxxopts::value<bool>(params.mipSeparation)->default_value("false"))(
-            "benders", "Benders separation of scenario cuts.",
-            cxxopts::value<bool>(params.benders)->default_value("false"))(
-            "paradaSet", "Separate Parada set cuts.",
+            "ps", "Separate Parada set cuts.",
             cxxopts::value<bool>(params.paradaSet)->default_value("false"))(
             "scenarioOptimal", "Use scenario optimal recourse policy.",
             cxxopts::value<bool>()->default_value("false"))(
@@ -155,8 +114,6 @@ Params getParams(int argc, const char *argv[]) {
             "Separate scenario optimal partial route cuts.",
             cxxopts::value<bool>(params.scenarioOptimalPRCuts)
                 ->default_value("false"))(
-            "lagrangian", "Separate Lagrangian cut.",
-            cxxopts::value<bool>(params.lagrangian)->default_value("false"))(
             "basic",
             "Deactivate fixed number of routes and expected capacity "
             "constraints.",
@@ -165,9 +122,7 @@ Params getParams(int argc, const char *argv[]) {
             cxxopts::value<bool>(params.sriFlowSeparation)
                 ->default_value("false"))(
             "inout", "Use in and out separation.",
-            cxxopts::value<bool>(params.inOut)->default_value("false"))(
-            "dualset", "Construct set cut from dual solution.",
-            cxxopts::value<bool>(params.dualSetCut)->default_value("false"));
+            cxxopts::value<bool>(params.inOut)->default_value("false"));
 
         auto result = options.parse(argc, argv);
 
@@ -180,15 +135,6 @@ Params getParams(int argc, const char *argv[]) {
             std::cout << "Invalid value of k and not set to read k from file."
                       << std::endl;
             exit(1);
-        }
-
-        // Set remaining parameters.
-        if (result["node"].as<bool>()) {
-            params.alg = NODE;
-        }
-
-        if (result["node_scenarios"].as<bool>()) {
-            params.alg = NODE_SCENARIOS;
         }
 
         if (result["scenarioOptimal"].as<bool>()) {
@@ -219,19 +165,4 @@ Params getParams(int argc, const char *argv[]) {
     }
 
     return params;
-}
-
-void printSolutionDetails(const SVRPSolution &solution) {
-    cout << "Solved!" << endl;
-    cout << stringhelper::routesAsString(solution) << endl;
-    cout << "Solution Cost: " << solution.cost << endl;
-    cout << "Optimal Recourse Cost: " << solution.optimalRecourseCost << endl;
-    cout << "Recourse Cost: " << solution.recourseCost << endl;
-    cout << "Time: " << solution.time << "s" << endl;
-    cout << "Nodes explored: " << solution.nodesExplored << endl;
-    cout << "CVRPSEP Time: " << solution.cvrpsepTime << endl;
-    cout << "Parada Time: " << solution.paradaTime << endl;
-    cout << "Partial Route Time: " << solution.partialRouteTime << endl;
-    cout << "SRI Time: " << solution.sriTime << endl;
-    cout << "Aggregated SRI Time: " << solution.aggregatedSriTime << endl;
 }

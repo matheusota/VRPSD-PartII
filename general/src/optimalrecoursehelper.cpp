@@ -71,12 +71,6 @@ double OptimalRecourseHelper::getRouteRecourseCost(
         return 0.0;
     }
 
-    // std::cout << std::endl << "Computing recourse cost of route: ";
-    // for (int i = 0; i < route.size(); i++) {
-    //     std::cout << route[i] << ", ";
-    // }
-    // std::cout << std::endl;
-
     for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
         double DPrecourseCost =
             getRouteRecourseCostInScenarioWithDP(route, scenarioId);
@@ -87,101 +81,7 @@ double OptimalRecourseHelper::getRouteRecourseCost(
         total += DPrecourseCost;
     }
 
-    // std::cout << "Route recourse cost: " << total << std::endl;
     return total / static_cast<double>(instance.nScenarios);
-}
-
-double OptimalRecourseHelper::getRouteRecourseCostInScenarioWithLP(
-    const std::vector<int> &route, int scenarioId,
-    std::vector<std::unordered_set<int>> &tightSubroutes) const {
-    GRBEnv env(true);
-    env.set(GRB_IntParam_OutputFlag, 0);
-    env.start();
-    GRBModel model(env);
-
-    model.set(GRB_StringAttr_ModelName, "OptimalRecourseModel");
-    model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
-    model.set(GRB_DoubleParam_TimeLimit, 300);
-    model.set(GRB_DoubleParam_MIPGap, 1e-9);
-    model.set(GRB_IntParam_Threads, 1);
-    env.set(GRB_IntParam_LogToConsole, 0);
-
-    // Customer variables.
-    std::vector<GRBVar> customerVar(route.size());
-    for (size_t i = 0; i < route.size(); i++) {
-        Node v = instance.g.nodeFromId(route[i]);
-
-        customerVar[i] = model.addVar(
-            0.0, GRB_INFINITY, instance.getEdgeRecourseCost(v), GRB_CONTINUOUS,
-            "customer_recourse_" + std::to_string(route[i]) + "_scen_" +
-                std::to_string(scenarioId));
-    }
-    model.update();
-
-    // Precompute sum of route demands.
-    std::vector<int> sumDemands(route.size(), 0);
-    for (size_t i = 0; i < route.size(); i++) {
-        int prev = (i == 0) ? 0 : sumDemands[i - 1];
-        assert(route[i] >= 0 && route[i] < instance.n);
-        sumDemands[i] = prev + instance.scenariosMatrix[route[i]][scenarioId];
-    }
-
-    // Subroute constraints.
-    for (size_t i = 0; i < route.size(); i++) {
-        for (size_t j = i; j < route.size(); j++) {
-            int prev = (i == 0) ? 0 : sumDemands[i - 1];
-            int subrouteDemand = sumDemands[j] - prev;
-
-            if (subrouteDemand <= static_cast<int>(instance.capacity)) {
-                continue;
-            }
-
-            GRBLinExpr expr = 0.0;
-            std::string consName = "route_";
-            for (size_t k = i; k <= j; k++) {
-                expr += customerVar[k];
-                consName += std::to_string(route[k]) + ",";
-            }
-            consName += "#" + std::to_string(i) + "," + std::to_string(j);
-
-            model.addConstr(
-                expr >= std::ceil(subrouteDemand / instance.capacity) - 1,
-                consName);
-        }
-    }
-
-    model.update();
-    model.optimize();
-
-    if (model.get(GRB_IntAttr_Status) != GRB_OPTIMAL) {
-        std::cout << "Error when computing optimal recourse cost." << std::endl;
-        exit(1);
-    }
-
-    double recourseCost = model.get(GRB_DoubleAttr_ObjVal);
-
-    GRBConstr *modelCons = 0;
-    modelCons = model.getConstrs();
-
-    for (int i = 0; i < model.get(GRB_IntAttr_NumConstrs); ++i) {
-        if (std::abs(modelCons[i].get(GRB_DoubleAttr_Pi)) > 1e-6) {
-            std::string consName = modelCons[i].get(GRB_StringAttr_ConstrName);
-            int pos = consName.find_first_of('#');
-            std::string tmp = consName.substr(pos + 1);
-            pos = tmp.find_first_of(',');
-            int first = std::stoi(tmp.substr(0, pos));
-            int second = std::stoi(tmp.substr(pos + 1));
-            // std::cout << consName << " is active." << std::endl;
-
-            std::unordered_set<int> subroute;
-            for (int j = first; j <= second; j++) {
-                subroute.insert(route[j]);
-            }
-            tightSubroutes.push_back(subroute);
-        }
-    }
-
-    return recourseCost;
 }
 
 double OptimalRecourseHelper::getRouteRecourseCostInScenarioWithDP(
@@ -392,4 +292,96 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostInScenarioWithDP(
 
     stateCost.clear();
     return bestRecourseCost;
+}
+
+double OptimalRecourseHelper::getRouteRecourseCostInScenarioWithLP(
+    const std::vector<int> &route, int scenarioId,
+    std::vector<std::unordered_set<int>> &tightSubroutes) const {
+    GRBEnv env(true);
+    env.set(GRB_IntParam_OutputFlag, 0);
+    env.start();
+    GRBModel model(env);
+
+    model.set(GRB_StringAttr_ModelName, "OptimalRecourseModel");
+    model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
+    model.set(GRB_DoubleParam_TimeLimit, 300);
+    model.set(GRB_DoubleParam_MIPGap, 1e-9);
+    model.set(GRB_IntParam_Threads, 1);
+    env.set(GRB_IntParam_LogToConsole, 0);
+
+    // Customer variables.
+    std::vector<GRBVar> customerVar(route.size());
+    for (size_t i = 0; i < route.size(); i++) {
+        Node v = instance.g.nodeFromId(route[i]);
+
+        customerVar[i] = model.addVar(
+            0.0, GRB_INFINITY, instance.getEdgeRecourseCost(v), GRB_CONTINUOUS,
+            "customer_recourse_" + std::to_string(route[i]) + "_scen_" +
+                std::to_string(scenarioId));
+    }
+    model.update();
+
+    // Precompute sum of route demands.
+    std::vector<int> sumDemands(route.size(), 0);
+    for (size_t i = 0; i < route.size(); i++) {
+        int prev = (i == 0) ? 0 : sumDemands[i - 1];
+        assert(route[i] >= 0 && route[i] < instance.n);
+        sumDemands[i] = prev + instance.scenariosMatrix[route[i]][scenarioId];
+    }
+
+    // Subroute constraints.
+    for (size_t i = 0; i < route.size(); i++) {
+        for (size_t j = i; j < route.size(); j++) {
+            int prev = (i == 0) ? 0 : sumDemands[i - 1];
+            int subrouteDemand = sumDemands[j] - prev;
+
+            if (subrouteDemand <= static_cast<int>(instance.capacity)) {
+                continue;
+            }
+
+            GRBLinExpr expr = 0.0;
+            std::string consName = "route_";
+            for (size_t k = i; k <= j; k++) {
+                expr += customerVar[k];
+                consName += std::to_string(route[k]) + ",";
+            }
+            consName += "#" + std::to_string(i) + "," + std::to_string(j);
+
+            model.addConstr(
+                expr >= std::ceil(subrouteDemand / instance.capacity) - 1,
+                consName);
+        }
+    }
+
+    model.update();
+    model.optimize();
+
+    if (model.get(GRB_IntAttr_Status) != GRB_OPTIMAL) {
+        std::cout << "Error when computing optimal recourse cost." << std::endl;
+        exit(1);
+    }
+
+    double recourseCost = model.get(GRB_DoubleAttr_ObjVal);
+
+    GRBConstr *modelCons = 0;
+    modelCons = model.getConstrs();
+
+    for (int i = 0; i < model.get(GRB_IntAttr_NumConstrs); ++i) {
+        if (std::abs(modelCons[i].get(GRB_DoubleAttr_Pi)) > 1e-6) {
+            std::string consName = modelCons[i].get(GRB_StringAttr_ConstrName);
+            int pos = consName.find_first_of('#');
+            std::string tmp = consName.substr(pos + 1);
+            pos = tmp.find_first_of(',');
+            int first = std::stoi(tmp.substr(0, pos));
+            int second = std::stoi(tmp.substr(pos + 1));
+
+            std::unordered_set<int> subroute;
+            for (int j = first; j <= second; j++) {
+                subroute.insert(route[j]);
+            }
+            tightSubroutes.push_back(subroute);
+        }
+    }
+
+    return recourseCost;
 }

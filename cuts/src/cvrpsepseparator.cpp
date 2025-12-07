@@ -5,7 +5,7 @@ CVRPSEPSeparator::CVRPSEPSeparator(const SVRPInstance &instance,
     : instance(instance), params(params), Demand(instance.n + 1, 0.0),
       NoOfCustomers(instance.n - 1), MaxNoOfCapCuts(10), MaxNoOfMStarCuts(30),
       MaxNoOfFCICuts(10), MaxNoOfCombCuts(20), MaxNoOfHypoCuts(10),
-      CAP(instance.capacity), EpsForIntegrality(1e-6),
+      CAP(instance.capacity), EpsForIntegrality(1e-4),
       MaxNoOfFCITreeNodes(20000) {
     // populate Demand vector
     for (NodeIt v(instance.g); v != INVALID; ++v) {
@@ -54,7 +54,7 @@ int CVRPSEPSeparator::addCapacityCuts(const EdgeValueMap &xValue,
             Edge e = findEdge(instance.g, instance.g.nodeFromId(customers[j]),
                               instance.g.nodeFromId(customers[k]));
             assert(e != INVALID);
-            cutData.edgePairs.push_back(std::make_pair(e, 1.0));
+            cutData.edgePairs.push_back({e, 1.0});
             cutData.LHS += xValue[e];
         }
     }
@@ -85,17 +85,6 @@ void CVRPSEPSeparator::getEdgeMatrix(const EdgeValueMap &xValue, int &nedges,
             nedges++;
         }
     }
-}
-
-// This maps from the directed to the undirected case.
-int CVRPSEPSeparator::separateCVRPSEPCuts(const ArcValueMap &xValue,
-                                          std::vector<CutData> &separatedCuts) {
-    EdgeValueMap edgeValue(instance.g, 0.0);
-    for (ArcIt a(instance.d_g); a != INVALID; ++a) {
-        edgeValue[instance.getEdgeFromArc(a)] += xValue[a];
-    }
-
-    return separateCVRPSEPCuts(edgeValue, separatedCuts);
 }
 
 int CVRPSEPSeparator::separateCVRPSEPCuts(const EdgeValueMap &xValue,

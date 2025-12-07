@@ -14,7 +14,6 @@
 #include <chrono>
 #include <cmath>
 #include "cvrpsepseparator.h"
-#include "gendreauseparator.h"
 #include "paradaseparator.h"
 #include "partialroute.h"
 #include "partialroutesbuilder.h"
@@ -31,7 +30,6 @@ class NodeRecourseCallback : public GRBCallback {
                          const EdgeGRBVarMap &x, const NodeGRBVarMap &y,
                          const NodeRecourseCutBuilder &cutBuilder,
                          CVRPSEPSeparator &cvrpsepSeparator,
-                         GendreauSeparator &gendreauSeparator,
                          ParadaSeparator &paradaSeparator,
                          PartialRouteSeparator &partialRouteSeparator,
                          AggregatedSRISeparator &aggregatedSRISeparator);
@@ -50,7 +48,6 @@ class NodeRecourseCallback : public GRBCallback {
     const NodeGRBVarMap &y;
     const NodeRecourseCutBuilder &cutBuilder;
     CVRPSEPSeparator &cvrpsepSeparator;
-    GendreauSeparator &gendreauSeparator;
     ParadaSeparator &paradaSeparator;
     PartialRouteSeparator &partialRouteSeparator;
     AggregatedSRISeparator &aggregatedSRISeparator;

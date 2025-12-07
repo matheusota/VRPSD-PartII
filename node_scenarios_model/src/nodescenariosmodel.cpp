@@ -1,20 +1,17 @@
 #include "nodescenariosmodel.h"
 
 NodeScenariosModel::NodeScenariosModel(const SVRPInstance &instance,
-                                       const Params &params, CutPool *cutPool_)
+                                       const Params &params, CutPool &cutPool)
     : instance(instance), params(params), model(env), x(instance.g),
       y(instance.g), interiorX(instance.g, 0.0), interiorY(instance.g),
       cvrpsepSeparator(instance, params),
-      sriSeparator(instance, params, cvrpsepSeparator),
-      callback(instance, params, x, y, cvrpsepSeparator, sriSeparator) {
+      sriSeparator(instance, params, cvrpsepSeparator), cutPool(cutPool) {
     for (NodeIt v(instance.g); v != INVALID; ++v) {
         interiorY[v].resize(instance.nScenarios);
     }
 
     // Set model.
     setBasicModel();
-    cutPool = cutPool_;
-    model.setCallback(&callback);
 }
 
 void NodeScenariosModel::setPrimalSolution(const SVRPSolution &primalSolution) {
@@ -59,7 +56,7 @@ void NodeScenariosModel::setBasicModel() {
     // Some other parameters.
     model.getEnv().set(GRB_DoubleParam_TimeLimit, params.timeLimit);
     model.getEnv().set(GRB_IntParam_Threads, 1);
-    model.getEnv().set(GRB_DoubleParam_MIPGap, 1e-9);
+    model.getEnv().set(GRB_DoubleParam_MIPGap, 1e-6);
     model.getEnv().set(GRB_IntParam_Cuts, 0);
     model.getEnv().set(GRB_IntParam_Presolve, 2);
     model.getEnv().set(GRB_IntParam_Method, 1);
@@ -67,7 +64,7 @@ void NodeScenariosModel::setBasicModel() {
     // Set x variables.
     for (EdgeIt e(instance.g); e != INVALID; ++e) {
         x[e] = model.addVar(
-            0.0, GRB_INFINITY, instance.weight[e], GRB_INTEGER,
+            0.0, GRB_INFINITY, instance.weight[e], GRB_CONTINUOUS,
             "x_" + std::to_string(instance.g.id(instance.g.u(e))) + "," +
                 std::to_string(instance.g.id(instance.g.v(e))));
     }
@@ -77,13 +74,13 @@ void NodeScenariosModel::setBasicModel() {
         if (instance.g.id(v) != instance.depot) {
             for (int scenarioId = 0; scenarioId < instance.nScenarios;
                  scenarioId++) {
-                y[v].push_back(model.addVar(
-                    0.0, GRB_INFINITY,
-                    (1.0 / static_cast<double>(instance.nScenarios)) *
-                        instance.getEdgeRecourseCost(v),
-                    GRB_CONTINUOUS,
-                    "y_" + std::to_string(instance.g.id(v)) + "^" +
-                        std::to_string(scenarioId)));
+                y[v].push_back(
+                    model.addVar(0.0, GRB_INFINITY,
+                                 instance.getEdgeRecourseCost(v) /
+                                     static_cast<double>(instance.nScenarios),
+                                 GRB_CONTINUOUS,
+                                 "y_" + std::to_string(instance.g.id(v)) + "^" +
+                                     std::to_string(scenarioId)));
             }
         }
     }
@@ -139,29 +136,9 @@ bool NodeScenariosModel::solve(SVRPSolution &solution) {
     auto started = chrono::high_resolution_clock::now();
 
     // Solve the root separately.
-    // Change variable types.
-    for (EdgeIt e(instance.g); e != INVALID; ++e) {
-        x[e].set(GRB_CharAttr_VType, GRB_CONTINUOUS);
-    }
-    for (NodeIt v(instance.g); v != INVALID; ++v) {
-        if (instance.g.id(v) != instance.depot) {
-            for (int scenarioId = 0; scenarioId < instance.nScenarios;
-                 scenarioId++) {
-                y[v][scenarioId].set(GRB_CharAttr_VType, GRB_CONTINUOUS);
-            }
-        }
-    }
-    model.update();
-
-    // Solve root.
     cvrpsepSeparator.setMaxNoOfCapCuts(10);
     solveRootLP(started);
     solution.rootBound = model.get(GRB_DoubleAttr_ObjVal);
-
-    // Change variable types back to integer.
-    for (EdgeIt e(instance.g); e != INVALID; ++e) {
-        x[e].set(GRB_CharAttr_VType, GRB_INTEGER);
-    }
 
     auto done = chrono::high_resolution_clock::now();
     solution.rootTime =
@@ -176,102 +153,15 @@ bool NodeScenariosModel::solve(SVRPSolution &solution) {
     std::cout << "Root time: " << solution.rootTime << " s" << std::endl;
     std::cout << "-----------------------------------------------" << std::endl;
 
-    // If using cut pool, build dual cut and return.
-    if (cutPool != nullptr) {
-        solution.cvrpsepCuts += cvrpsepSeparator.nCuts;
-        solution.cvrpsepTime += cvrpsepSeparator.time;
-        solution.sriCuts += sriSeparator.nCuts;
-        solution.sriTime += sriSeparator.time;
-
-        double dualObj = buildLagrangianCutAndGetDualObj();
-        assert(std::abs(dualObj - solution.rootBound) <= 1e-4);
-        return 0;
-    }
-
-    if (MIPTimeLimit < 0) {
-        return 0;
-    }
-
-    // Solve the MIP.
-    model.getEnv().set(GRB_DoubleParam_TimeLimit, MIPTimeLimit);
-    // cvrpsepSeparator->setMaxNoOfCapCuts(5);
-    model.update();
-    model.optimize();
-
-    // Collect solution and statistics.
-    setSolution(solution);
-
-    return 0;
-}
-
-void NodeScenariosModel::setSolution(SVRPSolution &solution) {
-    solution.lowerBound = model.get(GRB_DoubleAttr_ObjBound);
-    solution.upperBound = model.get(GRB_DoubleAttr_ObjVal);
-    solution.nodesExplored = model.get(GRB_DoubleAttr_NodeCount);
-    solution.gap = model.get(GRB_DoubleAttr_MIPGap);
-    // solution.rootBound = std::max(solution.rootBound, callback->rootBound);
+    // Build dual cut and return.
     solution.cvrpsepCuts += cvrpsepSeparator.nCuts;
     solution.cvrpsepTime += cvrpsepSeparator.time;
     solution.sriCuts += sriSeparator.nCuts;
     solution.sriTime += sriSeparator.time;
-    solution.deterministicCost = 0.0;
-    solution.recourseCost = 0.0;
-    solution.modelRecourseCost = 0.0;
 
-    // Get back the solution.
-    if (solution.upperBound <= 1e6) {
-        if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
-            solution.solved = true;
-        }
-
-        EdgeIntMap edgeCount(instance.g, 0);
-        for (EdgeIt e(instance.g); e != INVALID; ++e) {
-            if (x[e].get(GRB_DoubleAttr_X) > 0.001) {
-                edgeCount[e] =
-                    static_cast<int>(std::round(x[e].get(GRB_DoubleAttr_X)));
-                std::cout << x[e].get(GRB_StringAttr_VarName) << " = "
-                          << x[e].get(GRB_DoubleAttr_X) << std::endl;
-                solution.deterministicCost += edgeCount[e] * instance.weight[e];
-            }
-        }
-        solution.setRoutesFromSolution(instance, edgeCount);
-
-        for (int scenarioId = 0; scenarioId < instance.nScenarios;
-             scenarioId++) {
-            for (NodeIt v(instance.g); v != INVALID; ++v) {
-                if (instance.g.id(v) != instance.depot &&
-                    y[v][scenarioId].get(GRB_DoubleAttr_X) > 0.001) {
-                    std::cout
-                        << y[v][scenarioId].get(GRB_StringAttr_VarName) << " = "
-                        << y[v][scenarioId].get(GRB_DoubleAttr_X)
-                        << " recourse cost: " << instance.getEdgeRecourseCost(v)
-                        << std::endl;
-                    solution.modelRecourseCost +=
-                        (1.0 / static_cast<double>(instance.nScenarios)) *
-                        instance.getEdgeRecourseCost(v) *
-                        y[v][scenarioId].get(GRB_DoubleAttr_X);
-                }
-            }
-        }
-
-        solution.cost = solution.deterministicCost + solution.modelRecourseCost;
-        solution.recourseCost =
-            instance.classicalRecourseHelper.getRecourseCost(solution.routes);
-        solution.optimalRecourseCost =
-            instance.optimalRecourseHelper.getRecourseCost(solution.routes);
-
-        std::cout << "Deterministic cost " << solution.deterministicCost
-                  << endl;
-        std::cout << "Model recourse cost " << solution.modelRecourseCost
-                  << endl;
-        std::cout << "Optimal recourse cost " << solution.optimalRecourseCost
-                  << endl;
-        std::cout << "Classical recourse cost " << solution.recourseCost
-                  << endl;
-        std::cout << "Root bound: " << solution.rootBound << std::endl;
-    } else {
-        std::cout << "Didn’t find optimal solution." << std::endl;
-    }
+    double dualObj = buildLagrangianCutAndGetDualObj();
+    assert(std::abs(dualObj - solution.rootBound) <= 1e-4);
+    return 0;
 }
 
 // This solves the LP and update the out point and the candidate solution.
@@ -360,7 +250,10 @@ void NodeScenariosModel::solveRootLP(
                     candX, candY, customerSets[i], separatedCuts);
             }
         }
-        sriSeparator.heuristicSeparation(candX, candY, separatedCuts);
+
+        if (separatedCuts.empty()) {
+            sriSeparator.heuristicSeparation(candX, candY, separatedCuts);
+        }
 
         SRI_SEPARATION_STATUS status = SRI_SEPARATION_STATUS::NO_CUTS;
         if (separatedCuts.empty()) {
@@ -459,15 +352,10 @@ int NodeScenariosModel::addSeparatedCuts(EdgeValueMap &xValue,
         assert(sign * (LHS_mid - cutData.RHS) >= 1e-6);
         assert(sign * (LHS_out - cutData.RHS) >= 1e-6);
 
-        GRBConstr addedConstraint;
-        if (cutPool != nullptr) {
-            int cutId = cutPool->addCut(cutData);
-            addedConstraint =
-                model.addConstr(expr, cutData.sense, cutData.RHS,
-                                cutData.name + "?" + std::to_string(cutId));
-        } else {
-            addedConstraint = model.addConstr(expr, cutData.sense, cutData.RHS);
-        }
+        int cutId = cutPool.addCut(cutData);
+        GRBConstr addedConstraint =
+            model.addConstr(expr, cutData.sense, cutData.RHS,
+                            cutData.name + "?" + std::to_string(cutId));
         addedCuts++;
     }
 
@@ -511,7 +399,7 @@ double NodeScenariosModel::buildLagrangianCutAndGetDualObj() {
         else if (name.find("SRI") != std::string::npos) {
             int pos = name.find_first_of('?');
             int cutId = std::stoi(name.substr(pos + 1));
-            CutData &cutData = cutPool->getCut(cutId);
+            CutData &cutData = cutPool.getCut(cutId);
             cutData.dual = dual;
             RHS += dual * modelConstraints[i].get(GRB_DoubleAttr_RHS);
 
@@ -536,7 +424,7 @@ double NodeScenariosModel::buildLagrangianCutAndGetDualObj() {
         else if (name.find("CVRPSEP") != std::string::npos) {
             int pos = name.find_first_of('?');
             int cutId = std::stoi(name.substr(pos + 1));
-            CutData &cutData = cutPool->getCut(cutId);
+            CutData &cutData = cutPool.getCut(cutId);
             cutData.dual = dual;
         }
     }
@@ -560,7 +448,7 @@ double NodeScenariosModel::buildLagrangianCutAndGetDualObj() {
     CutData cutData;
     cutData.RHS = RHS;
     cutData.sense = '>';
-    cutData.LHS = RHS - 10;
+    cutData.LHS = RHS - 10; // some dummy value.
     cutData.name = "LagrangianCut";
 
     for (NodeIt v(instance.g); v != INVALID; ++v) {
@@ -569,9 +457,7 @@ double NodeScenariosModel::buildLagrangianCutAndGetDualObj() {
         }
 
         if (std::abs(nodeCoefs[v]) >= 1e-6) {
-            cutData.nodePairs.push_back(
-                {instance.g.id(v), (nodeCoefs[v] * instance.nScenarios) /
-                                       instance.getEdgeRecourseCost(v)});
+            cutData.nodePairs.push_back({instance.g.id(v), nodeCoefs[v]});
         }
     }
 
@@ -581,7 +467,7 @@ double NodeScenariosModel::buildLagrangianCutAndGetDualObj() {
         }
     }
 
-    cutPool->addCut(cutData);
+    cutPool.addCut(cutData);
 
     return dualObj;
 }

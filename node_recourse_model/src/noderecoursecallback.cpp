@@ -3,13 +3,11 @@
 NodeRecourseCallback::NodeRecourseCallback(
     const SVRPInstance &instance, const Params &params, const EdgeGRBVarMap &x,
     const NodeGRBVarMap &y, const NodeRecourseCutBuilder &cutBuilder,
-    CVRPSEPSeparator &cvrpsepSeparator, GendreauSeparator &gendreauSeparator,
-    ParadaSeparator &paradaSeparator,
+    CVRPSEPSeparator &cvrpsepSeparator, ParadaSeparator &paradaSeparator,
     PartialRouteSeparator &partialRouteSeparator,
     AggregatedSRISeparator &aggregatedSRISeparator)
     : instance(instance), params(params), x(x), y(y), cutBuilder(cutBuilder),
-      cvrpsepSeparator(cvrpsepSeparator), gendreauSeparator(gendreauSeparator),
-      paradaSeparator(paradaSeparator),
+      cvrpsepSeparator(cvrpsepSeparator), paradaSeparator(paradaSeparator),
       partialRouteSeparator(partialRouteSeparator),
       aggregatedSRISeparator(aggregatedSRISeparator) {
     rootBound = 1e9;
@@ -21,9 +19,6 @@ void NodeRecourseCallback::callback() {
     bool isMIPSol = (where == GRB_CB_MIPSOL);
     bool isMIPNode = (where == GRB_CB_MIPNODE) &&
                      (getIntInfo(GRB_CB_MIPNODE_STATUS) == GRB_OPTIMAL);
-    // std::cout << "before checking" << std::endl;
-    // cvrpsepSeparator.checkMyOldCuts();
-    // std::cout << "after checking" << std::endl;
     if (!isMIPSol && !isMIPNode) {
         return;
     }
@@ -53,7 +48,6 @@ void NodeRecourseCallback::callback() {
         // Construct xValue.
         EdgeValueMap xValue(instance.g, 0.0);
         for (EdgeIt e(instance.g); e != INVALID; ++e) {
-            assert(x[e].get(GRB_StringAttr_VarName).at(0) == 'x');
             xValue[e] = (this->*solutionValue)(x[e]);
         }
 
@@ -61,7 +55,6 @@ void NodeRecourseCallback::callback() {
         NodeValueMap yValue(instance.g, 0.0);
         for (NodeIt v(instance.g); v != INVALID; ++v) {
             if (instance.g.id(v) != instance.depot) {
-                assert(y[v].get(GRB_StringAttr_VarName).at(0) == 'y');
                 yValue[v] = (this->*solutionValue)(y[v]);
             }
         }
@@ -70,16 +63,8 @@ void NodeRecourseCallback::callback() {
         std::vector<CutData> separatedCuts;
         separateCuts(xValue, yValue, separatedCuts, isMIPSol, currNodeCount);
 
-        // std::vector<size_t> cutOrder(separatedCuts.size());
-        // std::iota(cutOrder.begin(), cutOrder.end(), 0);
-        // std::sort(cutOrder.begin(), cutOrder.end(), [&](size_t i, size_t j) {
-        //     return separatedCuts[i].violation > separatedCuts[j].violation;
-        // });
-        // int limit = std::min(static_cast<int>(separatedCuts.size()), 5);
-
         // Add cuts.
         for (const CutData &cutData : separatedCuts) {
-            // CutData &cutData = separatedCuts[cutOrder[i]];
             assert(std::isfinite(cutData.LHS));
             assert(std::isfinite(cutData.RHS));
             double sign = (cutData.sense == GRB_LESS_EQUAL) ? 1 : -1;
@@ -89,14 +74,6 @@ void NodeRecourseCallback::callback() {
 
             addLazy(cutBuilder.buildCutExpr(cutData), cutData.sense,
                     cutData.RHS);
-            // if (cutData.name == "CVRPSEP" ||
-            //     cutData.name == "PartialRouteCut") {
-            //     addLazy(cutBuilder.buildCutExpr(cutData), cutData.sense,
-            //             cutData.RHS);
-            // } else if (isMIPNode) {
-            //     addCut(cutBuilder.buildCutExpr(cutData), cutData.sense,
-            //            cutData.RHS);
-            // }
         }
     } catch (GRBException e) {
         std::cout
@@ -138,10 +115,11 @@ void NodeRecourseCallback::separateCuts(const EdgeValueMap &xValue,
         return;
     }
 
+    // Try to separate inequalities from partial routes.
     PartialRoutesBuilder partialRoutesBuilder(instance, params, xValue, yValue);
 
     if (params.paradaSet || params.sriCuts) {
-        // Note these customer sets already contain one set of each connected
+        // Note these customer sets already contain one set for each connected
         // component.
         const auto &prCustomerSets = partialRoutesBuilder.getCustomerSets();
         for (const auto &customers : prCustomerSets) {
@@ -166,25 +144,10 @@ void NodeRecourseCallback::separateCuts(const EdgeValueMap &xValue,
         return;
     }
 
+    // Lastly, we separate aggregated SRIs using the flow heuristic.
     if (!isInteger && params.sriFlowSeparation && params.sriCuts &&
-        nodeCount <= 1e6) {
+        nodeCount <= 5000) {
         aggregatedSRISeparator.flowHeuristicSeparation(xValue, yValue,
                                                        separatedCuts);
-    }
-    if (!separatedCuts.empty()) {
-        return;
-    }
-
-    // Separate Gendreau cuts.
-    if (params.gendreauCuts && separatedCuts.empty()) {
-        double totalRecourse = 0.0;
-        for (NodeIt v(instance.g); v != INVALID; ++v) {
-            if (instance.g.id(v) != instance.depot) {
-                totalRecourse += yValue[v];
-            }
-        }
-
-        gendreauSeparator.separateAggregatedGendreauCut(xValue, totalRecourse,
-                                                        separatedCuts);
     }
 }

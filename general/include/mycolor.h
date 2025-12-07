@@ -1,10 +1,10 @@
 // =============================================================
 //
-//  Routines for color codification
-//
-//  Send comments/corrections to Flavio K. Miyazawa.
+//  Code was gently provided by Flavio K. Miyazawa.
+//  https://www.ic.unicamp.br/~fkm/courses.html
 //
 // =============================================================
+
 #ifndef MYCOLOR_DEFINE
 #define MYCOLOR_DEFINE
 #include "myutils.h"

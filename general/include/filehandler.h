@@ -15,7 +15,6 @@
 
 namespace filehandler {
 bool readInstance(const Params &params, SVRPInstance &instance);
-bool saveSolution(const SVRPSolution &sol, std::string outputName);
 bool addEntryToTable(const Params &params, const SVRPInstance &instance,
                      const SVRPSolution &solution);
 } // namespace filehandler

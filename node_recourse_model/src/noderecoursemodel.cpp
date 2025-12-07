@@ -4,13 +4,11 @@ NodeRecourseModel::NodeRecourseModel(const SVRPInstance &instance,
                                      const Params &params, CutPool *cutPool_)
     : instance(instance), params(params), model(env), x(instance.g),
       y(instance.g), cutBuilder(instance, params, x, y),
-      cvrpsepSeparator(instance, params), gendreauSeparator(instance, params),
-      paradaSeparator(instance, params),
+      cvrpsepSeparator(instance, params), paradaSeparator(instance, params),
       partialRouteSeparator(instance, params),
       aggregatedSRISeparator(instance, params),
       callback(instance, params, x, y, cutBuilder, cvrpsepSeparator,
-               gendreauSeparator, paradaSeparator, partialRouteSeparator,
-               aggregatedSRISeparator) {
+               paradaSeparator, partialRouteSeparator, aggregatedSRISeparator) {
     cutPool = cutPool_;
 
     // Set model.
@@ -71,10 +69,7 @@ void NodeRecourseModel::setBasicModel() {
     // Some other parameters.
     model.getEnv().set(GRB_DoubleParam_TimeLimit, params.timeLimit);
     model.getEnv().set(GRB_IntParam_Threads, 1);
-    model.getEnv().set(GRB_DoubleParam_MIPGap, 1e-9);
-    // model.getEnv().set(GRB_IntParam_MIPFocus, 2);
-    // model.getEnv().set(GRB_IntParam_Cuts, 3);
-    // model.getEnv().set(GRB_IntParam_Presolve, 0);
+    model.getEnv().set(GRB_DoubleParam_MIPGap, 1e-6);
 
     // Set x variables.
     for (EdgeIt e(instance.g); e != INVALID; ++e) {
@@ -93,8 +88,10 @@ void NodeRecourseModel::setBasicModel() {
     // Set y variables.
     for (NodeIt v(instance.g); v != INVALID; ++v) {
         if (instance.g.id(v) != instance.depot) {
-            y[v] = model.addVar(0.0, instance.getEdgeRecourseCost(v), 1.0,
-                                GRB_CONTINUOUS,
+            y[v] = model.addVar(0.0, instance.nScenarios,
+                                instance.getEdgeRecourseCost(v) /
+                                    static_cast<double>(instance.nScenarios),
+                                GRB_INTEGER,
                                 "y_" + std::to_string(instance.g.id(v)));
         }
     }
@@ -102,18 +99,18 @@ void NodeRecourseModel::setBasicModel() {
 
     // Incidence constraints.
     for (NodeIt v(instance.g); v != INVALID; ++v) {
-        int v_id = instance.g.id(v);
-        double RHS = (v_id == instance.depot) ? 2.0 * instance.k : 2.0;
+        int id = instance.g.id(v);
+        double RHS = (id == instance.depot) ? 2.0 * instance.k : 2.0;
 
         GRBLinExpr expr = 0.0;
         for (IncEdgeIt e(instance.g, v); e != INVALID; ++e) {
             expr += x[e];
         }
 
-        if (v_id == instance.depot && params.basicVRPSD) {
-            model.addConstr(expr >= 2.0, "incidence_" + std::to_string(v_id));
+        if (id == instance.depot && params.basicVRPSD) {
+            model.addConstr(expr >= 2.0, "incidence_" + std::to_string(id));
         } else {
-            model.addConstr(expr == RHS, "incidence_" + std::to_string(v_id));
+            model.addConstr(expr == RHS, "incidence_" + std::to_string(id));
         }
     }
     model.update();
@@ -127,7 +124,7 @@ bool NodeRecourseModel::solve(SVRPSolution &solution) {
     initialRootBound = solution.rootBound;
 
     // Solve the root separately.
-    // Change variable types.
+    // First we change the variable types.
     for (EdgeIt e(instance.g); e != INVALID; ++e) {
         x[e].set(GRB_CharAttr_VType, GRB_CONTINUOUS);
     }
@@ -152,9 +149,9 @@ bool NodeRecourseModel::solve(SVRPSolution &solution) {
     for (EdgeIt e(instance.g); e != INVALID; ++e) {
         x[e].set(GRB_CharAttr_VType, GRB_INTEGER);
     }
-    // for (NodeIt v(instance.g); v != INVALID; ++v) {
-    //     y[v].set(GRB_CharAttr_VType, GRB_INTEGER);
-    // }
+    for (NodeIt v(instance.g); v != INVALID; ++v) {
+        y[v].set(GRB_CharAttr_VType, GRB_INTEGER);
+    }
 
     // Delete inactive cuts.
     // cleanupCuts();
@@ -203,8 +200,6 @@ void NodeRecourseModel::setSolution(SVRPSolution &solution) {
     // solution.rootBound = std::max(solution.rootBound, callback.rootBound);
     solution.cvrpsepCuts += cvrpsepSeparator.nCuts;
     solution.cvrpsepTime += cvrpsepSeparator.time;
-    solution.gendreauCuts += gendreauSeparator.nCuts;
-    solution.gendreauTime += gendreauSeparator.time;
     solution.paradaPathCuts += paradaSeparator.nPathCuts;
     solution.paradaSetCuts += paradaSeparator.nSetCuts;
     solution.paradaTime += paradaSeparator.time;
@@ -299,14 +294,14 @@ void NodeRecourseModel::solveRootLP(
 
         // Construct current solution.
         double totalRecourse;
-        getCurrentSolution(xValue, yValue, totalRecourse);
+        getCurrentSolution(xValue, yValue);
 
         // Separate additional cuts.
         callback.separateCuts(xValue, yValue, separatedCuts, false, 0);
 
         // Add Lagrangian cut if necessary.
         if (separatedCuts.empty() && cutPool != nullptr &&
-            currDualBound <= cutPool->rootBound - 1e-1 && params.lagrangian) {
+            currDualBound <= cutPool->rootBound - 0.01) {
             assert(!addedLagrangianCut);
             const std::vector<CutData> &cutPoolCuts = cutPool->getAllCuts();
             assert(cutPoolCuts.back().name == "LagrangianCut");
@@ -323,19 +318,14 @@ void NodeRecourseModel::solveRootLP(
 }
 
 void NodeRecourseModel::getCurrentSolution(EdgeValueMap &xValue,
-                                           NodeValueMap &yValue,
-                                           double &totalRecourse) {
+                                           NodeValueMap &yValue) {
     for (EdgeIt e(instance.g); e != INVALID; ++e) {
         xValue[e] = x[e].get(GRB_DoubleAttr_X);
     }
 
-    totalRecourse = 0.0;
     for (NodeIt v(instance.g); v != INVALID; ++v) {
         if (instance.g.id(v) != instance.depot) {
             yValue[v] = y[v].get(GRB_DoubleAttr_X);
-            totalRecourse += yValue[v];
-        } else {
-            yValue[v] = 0.0;
         }
     }
 }
@@ -356,9 +346,6 @@ bool NodeRecourseModel::addSeparatedCuts(
             GRBConstr addedConstraint =
                 model.addConstr(cutBuilder.buildCutExpr(cutData), cutData.sense,
                                 cutData.RHS, cutData.name);
-            // if (cutData.name != "LagrangianCut") {
-            //     addedConstraint.set(GRB_IntAttr_Lazy, 1);
-            // }
             addedCut = true;
         } catch (GRBException e) {
             std::cout << "Gurobi exception: " << e.getMessage()
@@ -384,9 +371,8 @@ void NodeRecourseModel::addInitialCuts(
                 GRBConstr addedConstraint =
                     model.addConstr(cutBuilder.buildCutExpr(cutData),
                                     cutData.sense, cutData.RHS, cutData.name);
-                // addedConstraint.set(GRB_IntAttr_Lazy, 1);
             }
-        } else if (cutData.name == "SRI" && std::abs(cutData.dual) >= 1e-4) {
+        } else if (cutData.name == "SRI" && std::abs(cutData.dual) >= 1e-6) {
             if (addedSRI.find(cutData.customers) != addedSRI.end()) {
                 continue;
             } else {

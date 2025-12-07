@@ -22,15 +22,12 @@ NodeRecourseCutBuilder::buildCutExpr(const CutData &cutData) const {
         assert(std::isfinite(coef));
         Node v = instance.g.nodeFromId(id);
         assert(y[v].get(GRB_StringAttr_VarName).at(0) == 'y');
-        expr += coef * y[v];
-    }
 
-    if (cutData.name == "GendreauCut") {
-        for (NodeIt v(instance.g); v != INVALID; ++v) {
-            if (instance.g.id(v) != instance.depot) {
-                expr += y[v];
-            }
+        double newCoef = coef;
+        if (cutData.name == "PartialRouteCut" || cutData.name == "SetCut") {
+            newCoef *= instance.getEdgeRecourseCost(v);
         }
+        expr += newCoef * y[v];
     }
 
     return expr;

@@ -152,9 +152,6 @@ void PartialRoutesBuilder::buildSupportGraph() {
         if (xValue[e] >= EpsForIntegrality) {
             Edge e2 = supportGraph.addEdge(u2, v2);
             supportXValue[e2] += xValue[e];
-            // std::cout << "x_" << instance.g.id(u) << "," <<
-            // instance.g.id(v)
-            //           << " = " << xValue[e] << std::endl;
         }
     }
 
@@ -232,19 +229,6 @@ void PartialRoutesBuilder::buildBlockCutTree() {
     // Find the cut nodes.
     NodeBoolMap boolCutNodesMap(supportGraph);
     biNodeConnectedCutNodes(supportGraph, boolCutNodesMap);
-
-    // NodeValueMap posx(supportGraph, 0.0);
-    // NodeValueMap posy(supportGraph, 0.0);
-    // for (NodeIt v(supportGraph); v != INVALID; ++v) {
-    //     Node originalV = instance.g.nodeFromId(supportGraph.id(v));
-    //     posx[v] = instance.posx[originalV];
-    //     posy[v] = instance.posy[originalV];
-    // }
-    // graphviewer::viewSupportWithNodeAndEdgeMap(supportGraph,
-    // supportXValue,
-    //                                            posx, posy,
-    //                                            boolCutNodesMap,
-    //                                            biconnectedEdgeMap);
 
     // Attribute ids to nodes in biconnected components and to cut nodes.
     // Ids of bicomponents start at zero and id of cut nodes start at

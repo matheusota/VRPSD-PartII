@@ -40,12 +40,12 @@ class PartialRouteSeparator {
 
     void setCutCoefficientsNew(const PartialRoute &partialRoute,
                                double recourseCost, EdgeValueMap &edgeCoefs,
-                               double &RHS, bool simpleAdherence);
-    void setCutCoefficientsHoogendoorn(const PartialRoute &partialRoute,
-                                       double recourseCost,
-                                       EdgeValueMap &edgeCoefs, double &RHS);
+                               double &RHS, bool simpleAdherence,
+                               bool improved);
+    // Set coefficients x(E(S)).
     void setCoefficientsInsideSet(const std::vector<int> &vertices, double coef,
                                   EdgeValueMap &edgeCoefs);
+    // Set coefficients x(v, S).
     void setCoefficientsToSet(int from, const std::vector<int> &vertices,
                               double coef, EdgeValueMap &edgeCoefs);
     bool addCutFromCoefs(const EdgeValueMap &xValue,

@@ -54,7 +54,7 @@ int PartialRouteSeparator::separatePartialRouteCuts(
         double RHS = 0.0;
         EdgeValueMap edgeCoefs(instance.g, 0.0);
         setCutCoefficientsNew(partialRoute, recourseCostToUse, edgeCoefs, RHS,
-                              useSimpleAdherenceCuts);
+                              useSimpleAdherenceCuts, true);
 
         // Add inequality.
         if (addCutFromCoefs(xValue, nodesToConsider, recourseValue, edgeCoefs,
@@ -104,7 +104,7 @@ void PartialRouteSeparator::setCoefficientsInsideSet(
 
 void PartialRouteSeparator::setCutCoefficientsNew(
     const PartialRoute &partialRoute, double recourseCost,
-    EdgeValueMap &edgeCoefs, double &RHS, bool simpleAdherence) {
+    EdgeValueMap &edgeCoefs, double &RHS, bool simpleAdherence, bool improved) {
     // Get number of nodes in the partial route.
     int countPartialRouteNodes = 0;
     int partialRouteSize = static_cast<int>(partialRoute.entries.size());
@@ -118,7 +118,8 @@ void PartialRouteSeparator::setCutCoefficientsNew(
 
     // Set alphas and betas.
     if (partialRouteSize == 3) {
-        if (static_cast<int>(partialRoute.entries[0].vertices.size()) == 1 ||
+        if (!improved ||
+            static_cast<int>(partialRoute.entries[0].vertices.size()) == 1 ||
             static_cast<int>(
                 partialRoute.entries[partialRouteSize - 1].vertices.size()) ==
                 1) {
@@ -127,15 +128,17 @@ void PartialRouteSeparator::setCutCoefficientsNew(
                 1.0 - static_cast<int>(partialRoute.entries[1].vertices.size());
         }
     } else if (partialRouteSize >= 2) {
-        if (static_cast<int>(partialRoute.entries[0].vertices.size()) == 1) {
+        if (!improved ||
+            static_cast<int>(partialRoute.entries[0].vertices.size()) == 1) {
             alpha[1] += 1;
             RHS +=
                 1.0 - static_cast<int>(partialRoute.entries[1].vertices.size());
         }
 
-        if (static_cast<int>(
+        if (!improved ||
+            static_cast<int>(
                 partialRoute.entries[partialRouteSize - 1].vertices.size()) ==
-            1) {
+                1) {
             alpha[partialRouteSize - 2] += 1;
             RHS +=
                 1.0 -
@@ -189,69 +192,6 @@ void PartialRouteSeparator::setCutCoefficientsNew(
     RHS *= recourseCost;
 }
 
-void PartialRouteSeparator::setCutCoefficientsHoogendoorn(
-    const PartialRoute &partialRoute, double recourseCost,
-    EdgeValueMap &edgeCoefs, double &RHS) {
-    // Set coefficients according to Hoogendoorn and Spliet.
-    int partialRouteSize = partialRoute.entries.size();
-    std::vector<double> alpha(partialRouteSize, 1);
-    std::vector<double> beta(partialRouteSize - 1, 1);
-    RHS = (partialRouteSize == 1) ? 0.0 : recourseCost;
-
-    // Set alphas and betas.
-    if (partialRouteSize == 1) {
-        alpha = {3};
-    } else if (partialRouteSize == 2) {
-        alpha = {4, 4};
-        beta = {3};
-    } else if (partialRouteSize == 3) {
-        alpha = {3, 2, 3};
-        beta = {2, 2};
-    } else {
-        alpha[0] = 3;
-        alpha[partialRouteSize - 1] = 3;
-        alpha[1] = 2;
-        alpha[partialRouteSize - 2] = 2;
-        beta[0] = 2;
-        beta[partialRouteSize - 2] = 2;
-    }
-
-    // Set coefficients of arcs incident to the depot.
-    setCoefficientsToSet(0, partialRoute.entries[0].vertices, -recourseCost,
-                         edgeCoefs);
-    RHS -= recourseCost;
-
-    if (partialRouteSize > 1) {
-        setCoefficientsToSet(
-            0, partialRoute.entries[partialRouteSize - 1].vertices,
-            -recourseCost, edgeCoefs);
-        RHS -= recourseCost;
-    }
-
-    // Set coefficients of the remaining arcs in the partial route.
-    for (int i = 0; i < partialRouteSize; i++) {
-        if (partialRoute.entries[i].vertices.size() > 1) {
-            setCoefficientsInsideSet(partialRoute.entries[i].vertices,
-                                     -alpha[i] * recourseCost, edgeCoefs);
-            RHS -= recourseCost * alpha[i] *
-                   (partialRoute.entries[i].vertices.size() - 1);
-        }
-
-        if (i < partialRouteSize - 1) {
-            if (partialRoute.entries[i].vertices.size() == 1) {
-                setCoefficientsToSet(partialRoute.entries[i].vertices[0],
-                                     partialRoute.entries[i + 1].vertices,
-                                     -beta[i] * recourseCost, edgeCoefs);
-            } else {
-                setCoefficientsToSet(partialRoute.entries[i + 1].vertices[0],
-                                     partialRoute.entries[i].vertices,
-                                     -beta[i] * recourseCost, edgeCoefs);
-            }
-            RHS -= recourseCost * beta[i];
-        }
-    }
-}
-
 // The return value of this indicates if the inequality is violated or not.
 bool PartialRouteSeparator::addCutFromCoefs(
     const EdgeValueMap &xValue, const std::vector<Node> &nodesToConsider,
@@ -266,14 +206,14 @@ bool PartialRouteSeparator::addCutFromCoefs(
 
     for (Node v : nodesToConsider) {
         assert(instance.g.id(v) >= 1 && instance.g.id(v) < instance.n);
-        cutData.nodePairs.push_back(std::make_pair(instance.g.id(v), 1.0));
+        cutData.nodePairs.push_back({instance.g.id(v), 1.0});
         cutData.LHS += recourseValue[v];
         cutData.customers.push_back(instance.g.id(v));
     }
 
     for (EdgeIt e(instance.g); e != INVALID; ++e) {
         if (edgeCoefs[e] != 0) {
-            cutData.edgePairs.push_back(std::make_pair(e, edgeCoefs[e]));
+            cutData.edgePairs.push_back({e, edgeCoefs[e]});
             cutData.LHS += edgeCoefs[e] * xValue[e];
         }
     }

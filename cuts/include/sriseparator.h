@@ -26,9 +26,6 @@ class SRISeparator {
                  CVRPSEPSeparator &cvrpsepSeparator);
 
     // Return the number of separated cuts.
-    int flowSeparation(const EdgeValueMap &xValue,
-                       const NodeVectorValueMap &yValue,
-                       std::vector<CutData> &separatedCuts);
     int heuristicSeparation(const EdgeValueMap &xValue,
                             const NodeVectorValueMap &yValue,
                             std::vector<CutData> &separatedCuts);
@@ -36,9 +33,6 @@ class SRISeparator {
                       const NodeVectorValueMap &yValue,
                       std::vector<CutData> &separatedCuts,
                       SRI_SEPARATION_STATUS &status);
-    int integerSeparation(const EdgeValueMap &xValue,
-                          const NodeVectorValueMap &yValue,
-                          std::vector<CutData> &separatedCuts);
     int separateSRIFromCustomerSet(const EdgeValueMap &xValue,
                                    const NodeVectorValueMap &yValue,
                                    const std::vector<int> &customers,
@@ -50,34 +44,27 @@ class SRISeparator {
     double EpsForIntegrality = 1e-4;
     CVRPSEPSeparator &cvrpsepSeparator;
 
+    // Digraph for the network flow heuristic.
+    double flowRoundFactor = 1e6;
+    Digraph flowGraph;
+    DNode newSource;
+
     int addSRICutsFromRoute(const EdgeValueMap &xValue,
                             const NodeVectorValueMap &yValue,
                             const std::vector<int> &route,
                             std::vector<CutData> &separatedCuts);
-
     int addCut(const EdgeValueMap &xValue, const NodeVectorValueMap &yValue,
                const std::vector<std::pair<int, int>> &scenarioBounds,
                const std::vector<int> &customers,
                std::vector<CutData> &separatedCuts);
-
     int addSRIFromCustomerSet(const EdgeValueMap &xValue,
                               const NodeVectorValueMap &yValue,
                               const std::vector<int> &customers,
                               std::vector<CutData> &separatedCuts);
-
     SRI_SEPARATION_STATUS
     singleScenarioMIPModel(const EdgeValueMap &xValue,
                            const NodeVectorValueMap &yValue, int scenarioId,
                            std::vector<int> &customers);
-
-    // Not used.
-    int integerSeparation2(const EdgeValueMap &xValue,
-                           const NodeValueMap &yValue,
-                           std::vector<CutData> &separatedCuts);
-
-    int addBendersCut(const EdgeValueMap &xValue, const NodeValueMap &yValue,
-                      const std::vector<int> &route,
-                      std::vector<CutData> &separatedCuts);
 };
 
 #endif // SRISEPARATOR_H

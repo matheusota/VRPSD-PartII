@@ -2,12 +2,35 @@
 #include "optimalrecoursehelper.h"
 
 SVRPInstance::SVRPInstance()
-    : posx(g), posy(g), demand(g, 0.0), weight(g, 0.0), upperBoundMap(g, 1.0),
-      d_posx(d_g), d_posy(d_g), d_demand(d_g, 0.0), d_weight(d_g, 0.0),
+    : posx(g), posy(g), demand(g, 0.0), weight(g, 0.0),
       classicalRecourseHelper(*this), optimalRecourseHelper(*this) {
-    n = m = k = depot = nrows = 0;
+    n = m = k = depot = 0;
     capacity = 0.0;
     nScenarios = 0;
+}
+
+void SVRPInstance::print() const {
+    std::cout << "Input Description:" << endl;
+    std::cout << "n          : " << n << endl;
+    std::cout << "m          : " << m << endl;
+    std::cout << "k          : " << k << endl;
+    std::cout << "capacity   : " << capacity << endl;
+    std::cout << "depot      : " << depot << endl;
+
+    std::cout << "nodes     :" << endl;
+    for (NodeIt v(g); v != INVALID; ++v) {
+        std::cout << " " << g.id(v) << ": " << demand[v] << endl;
+    }
+    std::cout << endl;
+
+    std::cout << "-------------------------" << endl;
+    for (int j = 0; j < nScenarios; j++) {
+        std::cout << "SCENARIO " << j << " :";
+        for (int i = 0; i < n; i++) {
+            std::cout << scenariosMatrix[i][j] << " ";
+        }
+        std::cout << endl;
+    }
 }
 
 void SVRPInstance::sortScenarios() {
@@ -18,28 +41,10 @@ void SVRPInstance::sortScenarios() {
             totalDemand += scenariosMatrix[i][scenarioId];
         }
 
-        sortedScenarios.push_back(std::make_pair(-totalDemand, scenarioId));
+        sortedScenarios.push_back({-totalDemand, scenarioId});
     }
 
     std::sort(sortedScenarios.begin(), sortedScenarios.end());
-}
-
-Node SVRPInstance::getNodeFromDNode(DNode v) const {
-    return g.nodeFromId(d_g.id(v));
-}
-DNode SVRPInstance::getDNodeFromNode(Node v) const {
-    return d_g.nodeFromId(g.id(v));
-}
-
-Edge SVRPInstance::getEdgeFromArc(Arc a) const {
-    return findEdge(g, getNodeFromDNode(d_g.source(a)),
-                    getNodeFromDNode(d_g.target(a)));
-}
-
-std::pair<Arc, Arc> SVRPInstance::getArcsFromEdge(Edge e) const {
-    return std::make_pair(
-        findArc(d_g, getDNodeFromNode(g.u(e)), getDNodeFromNode(g.v(e))),
-        findArc(d_g, getDNodeFromNode(g.v(e)), getDNodeFromNode(g.u(e))));
 }
 
 // Check the feasibility according to the average demands.
@@ -63,18 +68,6 @@ double SVRPInstance::getEdgeRecourseCost(Node v) const {
         Edge depotEdge = findEdge(g, g.nodeFromId(depot), v);
         assert(depotEdge != INVALID);
         return 2.0 * weight[depotEdge];
-    } else {
-        return 0.0;
-    }
-}
-
-double SVRPInstance::getArcRecourseCost(DNode v) const {
-    assert(v != INVALID);
-
-    if (d_g.id(v) != depot) {
-        Arc depotArc = findArc(d_g, d_g.nodeFromId(depot), v);
-        assert(depotArc != INVALID);
-        return 2.0 * d_weight[depotArc];
     } else {
         return 0.0;
     }

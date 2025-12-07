@@ -1,10 +1,10 @@
 // =============================================================
 //
-//  Some useful general routines
-//
-//  Send comments/corrections to Flavio K. Miyazawa.
+//  Code was gently provided by Flavio K. Miyazawa.
+//  https://www.ic.unicamp.br/~fkm/courses.html
 //
 // =============================================================
+
 #ifndef MYUTILS_DEFINE
 #define MYUTILS_DEFINE
 #include <math.h>

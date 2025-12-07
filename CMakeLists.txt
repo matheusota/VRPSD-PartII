@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Set build type to Debug if not specified.
 message(STATUS "BUILD TYPE: ${CMAKE_BUILD_TYPE}")
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug)
+  set(CMAKE_BUILD_TYPE Debug)
 endif()
 
 # Compiler flags.
@@ -50,7 +50,6 @@ message(STATUS "GUROBI_CXX_LIBRARY: ${GUROBI_CXX_LIBRARY}")
 add_subdirectory(CVRPSEP)
 add_subdirectory(general)
 add_subdirectory(cuts)
-# add_subdirectory(basic_model)
 add_subdirectory(node_recourse_model)
 add_subdirectory(node_scenarios_model)
 

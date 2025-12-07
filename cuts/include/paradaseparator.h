@@ -27,26 +27,12 @@ class ParadaSeparator {
                        const NodeValueMap &recourseValue,
                        const std::vector<int> &customers,
                        std::vector<CutData> &separatedCuts);
-    int separateParadaCuts(const EdgeValueMap &xValue,
-                           const NodeValueMap &recourseValue,
-                           std::vector<CutData> &separatedCuts,
-                           bool isFeasible = false);
 
   private:
     const SVRPInstance &instance;
     const Params &params;
     double EpsForIntegrality = 1e-4;
 
-    void buildSupportGraph(const EdgeValueMap &xValue, Graph &supportGraph,
-                           EdgeValueMap &supportXValue,
-                           NodeIntMap &componentsMap, int &nComponents);
-    int collectPathCuts(const Graph &supportGraph, const EdgeValueMap &xValue,
-                        const NodeValueMap &recourseValue,
-                        std::vector<CutData> &separatedCuts,
-                        const std::vector<int> &customers, bool isFeasible);
-    int addPathCut(const std::vector<int> &route, const EdgeValueMap &xValue,
-                   const NodeValueMap &recourseValue,
-                   std::vector<CutData> &separatedCuts);
     int addSetCut(const EdgeValueMap &xValue, const NodeValueMap &recourseValue,
                   const std::vector<int> &customers,
                   std::vector<CutData> &separatedCuts);

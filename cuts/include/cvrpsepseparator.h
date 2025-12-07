@@ -34,8 +34,6 @@ class CVRPSEPSeparator {
     // These functions return the number of separated cuts.
     int separateCVRPSEPCuts(const EdgeValueMap &xValue,
                             std::vector<CutData> &separatedCuts);
-    int separateCVRPSEPCuts(const ArcValueMap &xValue,
-                            std::vector<CutData> &separatedCuts);
 
     // Used for other separations that uses CVRPSEP.
     bool updateCustomerSetsForScenario(const EdgeValueMap &xValue,

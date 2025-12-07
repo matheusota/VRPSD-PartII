@@ -17,7 +17,6 @@
 #include "graphviewer.h"
 #include "params.h"
 #include "cvrpsepseparator.h"
-#include "gendreauseparator.h"
 #include "paradaseparator.h"
 #include "noderecoursecallback.h"
 #include "partialroute.h"
@@ -50,7 +49,6 @@ class NodeRecourseModel {
     NodeRecourseCutBuilder cutBuilder;
 
     CVRPSEPSeparator cvrpsepSeparator;
-    GendreauSeparator gendreauSeparator;
     ParadaSeparator paradaSeparator;
     PartialRouteSeparator partialRouteSeparator;
     AggregatedSRISeparator aggregatedSRISeparator;
@@ -59,8 +57,7 @@ class NodeRecourseModel {
     void setBasicModel();
     void solveRootLP(
         std::chrono::time_point<std::chrono::high_resolution_clock> &started);
-    void getCurrentSolution(EdgeValueMap &xValue, NodeValueMap &yValue,
-                            double &totalRecourse);
+    void getCurrentSolution(EdgeValueMap &xValue, NodeValueMap &yValue);
     bool addSeparatedCuts(const std::vector<CutData> &separatedCuts);
     void setSolution(SVRPSolution &solution);
     void addInitialCuts(const std::vector<CutData> &initialCuts);
