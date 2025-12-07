@@ -3,13 +3,11 @@
 
 PartialRoutesBuilder::PartialRoutesBuilder(const SVRPInstance &instance,
                                            const Params &params,
-                                           const EdgeValueMap &xValue,
-                                           const NodeValueMap &recourseValue)
+                                           const EdgeValueMap &xValue)
     : instance(instance), params(params), xValue(xValue),
-      recourseValue(recourseValue), supportXValue(supportGraph),
-      edgeDepotValue(supportGraph), treeVerticesMap(tree),
-      treeCutVertexMap(tree), treeRecourseCostMap(tree), treeNodeXValue(tree),
-      treeDemand(tree) {
+      supportXValue(supportGraph), edgeDepotValue(supportGraph),
+      treeVerticesMap(tree), treeCutVertexMap(tree), treeRecourseCostMap(tree),
+      treeNodeXValue(tree), treeDemand(tree) {
     buildPartialRoutes();
 }
 

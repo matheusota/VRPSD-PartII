@@ -91,6 +91,15 @@ void NodeRecourseCallback::separateCuts(const EdgeValueMap &xValue,
                                         const NodeValueMap &yValue,
                                         std::vector<CutData> &separatedCuts,
                                         bool isInteger, int nodeCount) {
+    NodeValueMap recourseValue(instance.g, 0.0);
+    for (NodeIt v(instance.g); v != INVALID; ++v) {
+        if (instance.g.id(v) != instance.depot) {
+            recourseValue[v] = (instance.getEdgeRecourseCost(v) /
+                                static_cast<double>(instance.nScenarios)) *
+                               yValue[v];
+        }
+    }
+
     // First separate CVRPSEP cuts.
     separatedCuts.clear();
     cvrpsepSeparator.separateCVRPSEPCuts(xValue, separatedCuts);
@@ -105,7 +114,7 @@ void NodeRecourseCallback::separateCuts(const EdgeValueMap &xValue,
                 aggregatedSRISeparator.addCutFromSet(xValue, yValue, customers,
                                                      separatedCuts);
             } else if (params.paradaSet) {
-                paradaSeparator.separateSetCut(xValue, yValue, customers,
+                paradaSeparator.separateSetCut(xValue, recourseValue, customers,
                                                separatedCuts);
             }
         }
@@ -116,7 +125,14 @@ void NodeRecourseCallback::separateCuts(const EdgeValueMap &xValue,
     }
 
     // Try to separate inequalities from partial routes.
-    PartialRoutesBuilder partialRoutesBuilder(instance, params, xValue, yValue);
+    auto started = chrono::high_resolution_clock::now();
+    PartialRoutesBuilder partialRoutesBuilder(instance, params, xValue);
+    auto done = chrono::high_resolution_clock::now();
+    partialRouteSeparator.time +=
+        static_cast<double>(
+            chrono::duration_cast<chrono::microseconds>(done - started)
+                .count()) /
+        1e6;
 
     if (params.paradaSet || params.sriCuts) {
         // Note these customer sets already contain one set for each connected
@@ -127,7 +143,7 @@ void NodeRecourseCallback::separateCuts(const EdgeValueMap &xValue,
                 aggregatedSRISeparator.addCutFromSet(xValue, yValue, customers,
                                                      separatedCuts);
             } else if (params.paradaSet) {
-                paradaSeparator.separateSetCut(xValue, yValue, customers,
+                paradaSeparator.separateSetCut(xValue, recourseValue, customers,
                                                separatedCuts);
             }
         }
@@ -136,7 +152,7 @@ void NodeRecourseCallback::separateCuts(const EdgeValueMap &xValue,
     // Construct partial routes and try to separate more cuts.
     if (params.partialRouteCuts) {
         partialRouteSeparator.separatePartialRouteCuts(
-            xValue, yValue, partialRoutesBuilder.getPartialRoutes(),
+            xValue, recourseValue, partialRoutesBuilder.getPartialRoutes(),
             separatedCuts);
     }
 

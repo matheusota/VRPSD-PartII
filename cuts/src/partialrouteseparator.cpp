@@ -54,7 +54,8 @@ int PartialRouteSeparator::separatePartialRouteCuts(
         double RHS = 0.0;
         EdgeValueMap edgeCoefs(instance.g, 0.0);
         setCutCoefficientsNew(partialRoute, recourseCostToUse, edgeCoefs, RHS,
-                              useSimpleAdherenceCuts, true);
+                              useSimpleAdherenceCuts,
+                              params.scenarioOptimalPRCuts);
 
         // Add inequality.
         if (addCutFromCoefs(xValue, nodesToConsider, recourseValue, edgeCoefs,

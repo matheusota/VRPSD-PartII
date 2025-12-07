@@ -15,12 +15,10 @@
                 "--readk",
                 "-t",
                 "1000",
-                "--node",
                 "--sri",
-                "--lagrangian",
-                "--mip",
-                "--partial_route",
-                "--flow"
+                "--pr",
+                "--flow",
+                "--prScenarioOptimal"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

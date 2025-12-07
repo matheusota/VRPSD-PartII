@@ -25,7 +25,8 @@ NodeRecourseCutBuilder::buildCutExpr(const CutData &cutData) const {
 
         double newCoef = coef;
         if (cutData.name == "PartialRouteCut" || cutData.name == "SetCut") {
-            newCoef *= instance.getEdgeRecourseCost(v);
+            newCoef *= instance.getEdgeRecourseCost(v) /
+                       static_cast<double>(instance.nScenarios);
         }
         expr += newCoef * y[v];
     }

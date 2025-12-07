@@ -57,7 +57,7 @@ void SVRPSolution::setRoutesFromSolution(const SVRPInstance &instance,
     while (hasNext) {
         hasNext = false;
 
-        // get next node
+        // Get the next node.
         for (IncEdgeIt e(instance.g, curr); e != INVALID; ++e) {
             if (edgeCount[e] > 0) {
                 next = (instance.g.u(e) == curr) ? instance.g.v(e)
@@ -69,12 +69,12 @@ void SVRPSolution::setRoutesFromSolution(const SVRPInstance &instance,
         }
 
         if (hasNext) {
-            // back to depot
+            // Back to the depot.
             if (next == depot) {
                 routes.push_back(currRoute);
                 currRoute.clear();
             }
-            // adding vertex to curr route
+            // Add vertex to curr route.
             else {
                 currRoute.push_back(instance.g.id(next));
             }
@@ -83,11 +83,16 @@ void SVRPSolution::setRoutesFromSolution(const SVRPInstance &instance,
         }
     }
 
-    // fix route orientations
+    // Fix route orientations.
     for (auto route : routes) {
         if (instance.classicalRecourseHelper.isRouteReversed(route)) {
             std::reverse(route.begin(), route.end());
         }
+    }
+
+    // Check that all edges were used.
+    for (EdgeIt e(instance.g); e != INVALID; ++e) {
+        assert(edgeCount[e] == 0);
     }
 }
 

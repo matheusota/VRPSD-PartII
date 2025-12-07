@@ -150,7 +150,9 @@ bool NodeRecourseModel::solve(SVRPSolution &solution) {
         x[e].set(GRB_CharAttr_VType, GRB_INTEGER);
     }
     for (NodeIt v(instance.g); v != INVALID; ++v) {
-        y[v].set(GRB_CharAttr_VType, GRB_INTEGER);
+        if (instance.g.id(v) != 0) {
+            y[v].set(GRB_CharAttr_VType, GRB_INTEGER);
+        }
     }
 
     // Delete inactive cuts.
@@ -197,7 +199,7 @@ void NodeRecourseModel::setSolution(SVRPSolution &solution) {
     solution.upperBound = model.get(GRB_DoubleAttr_ObjVal);
     solution.nodesExplored = model.get(GRB_DoubleAttr_NodeCount);
     solution.gap = model.get(GRB_DoubleAttr_MIPGap);
-    // solution.rootBound = std::max(solution.rootBound, callback.rootBound);
+    solution.rootBound = std::max(solution.rootBound, callback.rootBound);
     solution.cvrpsepCuts += cvrpsepSeparator.nCuts;
     solution.cvrpsepTime += cvrpsepSeparator.time;
     solution.paradaPathCuts += paradaSeparator.nPathCuts;
@@ -234,7 +236,10 @@ void NodeRecourseModel::setSolution(SVRPSolution &solution) {
                 y[v].get(GRB_DoubleAttr_X) > 1e-4) {
                 std::cout << y[v].get(GRB_StringAttr_VarName) << " = "
                           << y[v].get(GRB_DoubleAttr_X) << std::endl;
-                solution.modelRecourseCost += y[v].get(GRB_DoubleAttr_X);
+                solution.modelRecourseCost +=
+                    (instance.getEdgeRecourseCost(v) /
+                     static_cast<double>(instance.nScenarios)) *
+                    y[v].get(GRB_DoubleAttr_X);
             }
         }
 
@@ -253,6 +258,14 @@ void NodeRecourseModel::setSolution(SVRPSolution &solution) {
         std::cout << "Classical recourse cost " << solution.recourseCost
                   << endl;
         std::cout << "Root bound: " << solution.rootBound << std::endl;
+
+        if (params.policy == SCENARIO_OPTIMAL) {
+            assert(std::abs(solution.modelRecourseCost -
+                            solution.optimalRecourseCost) <= 1e-4);
+        } else {
+            assert(std::abs(solution.modelRecourseCost -
+                            solution.recourseCost) <= 1e-4);
+        }
     } else {
         std::cout << "Did not find optimal solution." << std::endl;
     }

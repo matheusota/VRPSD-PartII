@@ -1,3 +1,0 @@
-Instance, Flow-C, Flow-I, Gendreau, Node, Scen-Cuts
-RI-NEW-n16-LB0-UB30-V10-scen200-31.svrp, 489.357, 496.16 (491.88), 487.333, 495.86, 499.18
-RI-NEW-n16-LB0-UB30-V10-scen200-37.svrp, 474.922, 481.87 (480.15), 473.50, 476.29, 477.78

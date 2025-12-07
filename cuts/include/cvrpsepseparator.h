@@ -39,8 +39,6 @@ class CVRPSEPSeparator {
     bool updateCustomerSetsForScenario(const EdgeValueMap &xValue,
                                        int scenarioId);
 
-    // void checkMyOldCuts() const;
-
   private:
     const SVRPInstance &instance;
     const Params &params;
@@ -50,7 +48,6 @@ class CVRPSEPSeparator {
     std::vector<double> Demand;
     int NoOfCustomers, NoOfEdges, MaxNoOfCapCuts, MaxNoOfMStarCuts,
         MaxNoOfFCICuts, MaxNoOfCombCuts, MaxNoOfHypoCuts;
-    // CnstrMgrPointer MyCutsCMP, MyOldCutsCMP;
     double CAP, EpsForIntegrality, MaxCapViolation, MaxMStarViolation,
         MaxFCIViolation, MaxCombViolation, MaxHypoViolation;
     char IntegerAndFeasible;

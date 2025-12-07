@@ -26,15 +26,9 @@ class AggregatedSRISeparator {
     int addCutFromSet(const EdgeValueMap &xValue, const NodeValueMap &yValue,
                       const std::vector<int> &customers,
                       std::vector<CutData> &separatedCuts);
-    int cvrpsepHeuristicSeparation(const EdgeValueMap &xValue,
-                                   const NodeValueMap &recourseValue,
-                                   std::vector<CutData> &separatedCuts);
     int flowHeuristicSeparation(const EdgeValueMap &xValue,
-                                const NodeValueMap &recourseValue,
+                                const NodeValueMap &yValue,
                                 std::vector<CutData> &separatedCuts);
-    int mipSeparation(const EdgeValueMap &xValue,
-                      const NodeValueMap &recourseValue,
-                      std::vector<CutData> &separatedCuts);
     void addCriticalScenarios(const std::vector<int> scenarioIds) {
         criticalScenarios.insert(scenarioIds);
     }
@@ -53,21 +47,14 @@ class AggregatedSRISeparator {
     // Use this to store critical scenarios when calling flow separation.
     std::unordered_set<std::vector<int>, hash_vector> criticalScenarios;
 
-    void buildSupportGraph(const EdgeValueMap &xValue, Graph &supportGraph,
-                           EdgeValueMap &supportXValue,
-                           NodeIntMap &componentsMap, int &nComponents);
     int flowSeparationFromScenarios(const EdgeValueMap &xValue,
-                                    const NodeValueMap &recourseValue,
+                                    const NodeValueMap &yValue,
                                     const std::vector<int> &scenarios,
                                     std::vector<CutData> &separatedCuts);
     int addCutFromSetSimple(const EdgeValueMap &xValue,
                             const NodeValueMap &yValue,
                             const std::vector<int> &customers,
                             std::vector<CutData> &separatedCuts);
-    int addCutFromSetWithDual(const EdgeValueMap &xValue,
-                              const NodeValueMap &yValue,
-                              const std::vector<int> &customers,
-                              std::vector<CutData> &separatedCuts);
 };
 
 #endif // AGGREGATEDSRISEPARATOR_H

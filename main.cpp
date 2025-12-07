@@ -110,7 +110,7 @@ Params getParams(int argc, const char *argv[]) {
             cxxopts::value<bool>(params.paradaSet)->default_value("false"))(
             "scenarioOptimal", "Use scenario optimal recourse policy.",
             cxxopts::value<bool>()->default_value("false"))(
-            "scenarioOptimalPRCuts",
+            "prScenarioOptimal",
             "Separate scenario optimal partial route cuts.",
             cxxopts::value<bool>(params.scenarioOptimalPRCuts)
                 ->default_value("false"))(
