@@ -19,7 +19,6 @@ class SVRPSolution {
     double time = 0.0;
     int cvrpsepCuts = 0;
     double cvrpsepTime = 0.0;
-    int paradaPathCuts = 0;
     int paradaSetCuts = 0;
     double paradaTime = 0.0;
     int partialRouteCuts = 0;

@@ -174,13 +174,13 @@ bool addEntryToTable(const Params &params, const SVRPInstance &instance,
         algorithm += "-SRI";
     }
     if (params.paradaSet) {
-        algorithm += "-PARADA_SET";
+        algorithm += "-SET";
     }
     if (params.partialRouteCuts) {
-        algorithm += "-PARTIAL_ROUTE";
+        algorithm += "-PR";
     }
     if (params.scenarioOptimalPRCuts) {
-        algorithm += "-PR_SCENOPT_CUTS";
+        algorithm += "-SCENOPT_CUTS";
     }
     if (params.basicVRPSD) {
         algorithm += "-Basic";
@@ -189,7 +189,7 @@ bool addEntryToTable(const Params &params, const SVRPInstance &instance,
         algorithm += "-InOut";
     }
     if (params.sriFlowSeparation) {
-        algorithm += "-FLOWSEP";
+        algorithm += "-FLOW";
     }
 
     data << algorithm << " , " << params.inputFile << " , " << solution.cost
@@ -204,11 +204,10 @@ bool addEntryToTable(const Params &params, const SVRPInstance &instance,
          << " , " << solution.nodesExplored << " , " << solution.cvrpsepCuts
          << " , " << solution.cvrpsepTime << " , " << solution.partialRouteCuts
          << " , " << solution.partialRouteTime << " , "
-         << solution.paradaPathCuts << " , " << solution.paradaSetCuts << " , "
-         << solution.paradaTime << " , " << solution.sriCuts << " , "
-         << solution.sriTime << " , " << solution.aggregatedSriCuts << " , "
-         << solution.aggregatedSriTime << " , " << (solution.solved ? 1 : 0)
-         << std::endl;
+         << solution.paradaSetCuts << " , " << solution.paradaTime << " , "
+         << solution.sriCuts << " , " << solution.sriTime << " , "
+         << solution.aggregatedSriCuts << " , " << solution.aggregatedSriTime
+         << " , " << (solution.solved ? 1 : 0) << std::endl;
 
     data.close();
     return true;

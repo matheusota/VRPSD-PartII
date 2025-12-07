@@ -17,7 +17,6 @@
 class ParadaSeparator {
   public:
     int nSetCuts = 0;
-    int nPathCuts = 0;
     double time = 0.0;
 
     ParadaSeparator(const SVRPInstance &instance, const Params &params);

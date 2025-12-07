@@ -202,7 +202,6 @@ void NodeRecourseModel::setSolution(SVRPSolution &solution) {
     solution.rootBound = std::max(solution.rootBound, callback.rootBound);
     solution.cvrpsepCuts += cvrpsepSeparator.nCuts;
     solution.cvrpsepTime += cvrpsepSeparator.time;
-    solution.paradaPathCuts += paradaSeparator.nPathCuts;
     solution.paradaSetCuts += paradaSeparator.nSetCuts;
     solution.paradaTime += paradaSeparator.time;
     solution.partialRouteCuts += partialRouteSeparator.nCuts;
