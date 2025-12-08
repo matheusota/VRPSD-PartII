@@ -52,7 +52,8 @@ class NodeScenariosModel {
 
     void setBasicModel();
     void solveRootLP(
-        std::chrono::time_point<std::chrono::high_resolution_clock> &started);
+        const std::chrono::time_point<std::chrono::high_resolution_clock>
+            &started);
     int addSeparatedCuts(EdgeValueMap &xValue, NodeVectorValueMap &yValue,
                          EdgeValueMap &candX, NodeVectorValueMap &candY,
                          std::vector<CutData> &separatedCuts);

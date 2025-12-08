@@ -184,9 +184,13 @@ int AggregatedSRISeparator::flowSeparationFromScenarios(
     NodeValueMap scaledY(instance.g, 0.0);
     for (NodeIt v(instance.g); v != INVALID; ++v) {
         if (instance.g.id(v) != instance.depot) {
-            scaledY[v] = yValue[v] <= 1e-6 ? instance.nScenarios : yValue[v];
-            // We divide here because we take the average.
-            scaledY[v] /= static_cast<double>(scenarios.size());
+            if (instance.getEdgeRecourseCost(v) <= 1e-6) {
+                scaledY[v] = (instance.n - 1) * instance.nScenarios;
+            } else {
+                // We divide here because we take the average of the scenario
+                // demands.
+                scaledY[v] = yValue[v] / static_cast<double>(scenarios.size());
+            }
         }
     }
 
@@ -215,7 +219,7 @@ int AggregatedSRISeparator::flowSeparationFromScenarios(
             assert(id >= 1 && id < instance.n);
             Node v = instance.g.nodeFromId(id);
             capacityMap[a] =
-                static_cast<int>(std::round(topDemands[v] * flowRoundFactor));
+                static_cast<int>(std::ceil(topDemands[v] * flowRoundFactor));
         } else {
             int idu = flowGraph.id(du);
             int idv = flowGraph.id(dv);
@@ -231,7 +235,7 @@ int AggregatedSRISeparator::flowSeparationFromScenarios(
                 capacityValue += instance.capacity * scaledY[u];
             }
             capacityMap[a] =
-                static_cast<int>(std::round(capacityValue * flowRoundFactor));
+                static_cast<int>(std::ceil(capacityValue * flowRoundFactor));
         }
     }
 
@@ -244,20 +248,39 @@ int AggregatedSRISeparator::flowSeparationFromScenarios(
     int addedCuts = 0;
     if (preflow.flowValue() <= totalDemand * flowRoundFactor - 10) {
         std::vector<int> customers;
+        double customersY = 0.0;
+        double customersDemand = 0.0;
+        double xInside = 0.0;
 
-        double setY = 0.0;
         for (DNodeIt v(flowGraph); v != INVALID; ++v) {
             if (preflow.minCut(v) && v != newSource) {
                 int id = flowGraph.id(v);
                 assert(id >= 1 && id < instance.n);
                 customers.push_back(id);
-                setY += scaledY[instance.g.nodeFromId(id)];
+                Node v2 = instance.g.nodeFromId(id);
+                customersY += yValue[v2];
+                customersDemand += topDemands[v2];
             }
         }
 
+        assert(!customers.empty());
+        for (size_t i = 0; i < customers.size(); i++) {
+            for (size_t j = i + 1; j < customers.size(); j++) {
+                Node u = instance.g.nodeFromId(customers[i]);
+                Node v = instance.g.nodeFromId(customers[j]);
+                Edge e = findEdge(instance.g, u, v);
+                xInside += xValue[e];
+            }
+        }
+
+        assert(customersY <=
+               static_cast<double>(scenarios.size()) *
+                       ((customersDemand / instance.capacity) + xInside -
+                        static_cast<double>(customers.size())) -
+                   EpsForIntegrality);
+
         addedCuts =
             addCutFromSetSimple(xValue, yValue, customers, separatedCuts);
-        assert(addedCuts == 1);
     }
 
     return addedCuts;

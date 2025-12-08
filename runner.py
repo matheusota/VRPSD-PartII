@@ -8,19 +8,32 @@ parser.add_argument(
     "-t", "--timelimit", type=int, required=True, help="time limit in seconds"
 )
 parser.add_argument("-o", "--output", type=str, required=True, help="output file")
+parser.add_argument("-b", "--basic", action="store_true", help="Run basic variant.")
 args = parser.parse_args()
 timelimit = args.timelimit
 tableName = args.output
 mode = args.mode
 
-models = [
-    " --node --partial_route --sri --lagrangian --mip --flow ",
-    " --node --partial_route --sri --lagrangian --mip --flow --dualset ",
-]
+if args.basic:
+    models = [
+        " --pr --ps --basic ",
+        " --pr --sri --flow --basic ",
+        " --pr --sri --flow --basic --prScenarioOptimal ",
+    ]
+else:
+    models = [
+        " --pr --ps ",
+        " --pr --sri --flow ",
+        " --pr --sri --flow  --prScenarioOptimal ",
+    ]
 
 # set parameters according to mode
-if mode == "Jabali":
+if mode == "jabali2":
+    folders = ["./data/Jabali/k2"]
+elif mode == "jabali3":
     folders = ["./data/Jabali/k3"]
+elif mode == "jabali4":
+    folders = ["./data/Jabali/k4"]
 elif mode == "parada":
     folders = ["./data/parada/scenarios"]
 elif mode == "ccvrp":

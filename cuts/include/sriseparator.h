@@ -29,10 +29,11 @@ class SRISeparator {
     int heuristicSeparation(const EdgeValueMap &xValue,
                             const NodeVectorValueMap &yValue,
                             std::vector<CutData> &separatedCuts);
-    int mipSeparation(const EdgeValueMap &xValue,
-                      const NodeVectorValueMap &yValue,
-                      std::vector<CutData> &separatedCuts,
-                      SRI_SEPARATION_STATUS &status);
+    int mipSeparation(
+        const EdgeValueMap &xValue, const NodeVectorValueMap &yValue,
+        const std::chrono::time_point<std::chrono::high_resolution_clock>
+            &started1,
+        std::vector<CutData> &separatedCuts, SRI_SEPARATION_STATUS &status);
     int separateSRIFromCustomerSet(const EdgeValueMap &xValue,
                                    const NodeVectorValueMap &yValue,
                                    const std::vector<int> &customers,

@@ -40,11 +40,11 @@ int SRISeparator::heuristicSeparation(const EdgeValueMap &xValue,
     return addedCuts;
 }
 
-int SRISeparator::mipSeparation(const EdgeValueMap &xValue,
-                                const NodeVectorValueMap &yValue,
-                                std::vector<CutData> &separatedCuts,
-                                SRI_SEPARATION_STATUS &status) {
-    auto started = chrono::high_resolution_clock::now();
+int SRISeparator::mipSeparation(
+    const EdgeValueMap &xValue, const NodeVectorValueMap &yValue,
+    const std::chrono::time_point<std::chrono::high_resolution_clock> &started1,
+    std::vector<CutData> &separatedCuts, SRI_SEPARATION_STATUS &status) {
+    auto started2 = chrono::high_resolution_clock::now();
 
     int addedCuts = 0;
     for (int i = 0; i < instance.nScenarios; i++) {
@@ -75,11 +75,21 @@ int SRISeparator::mipSeparation(const EdgeValueMap &xValue,
         if (addedCuts >= 1) {
             break;
         }
+
+        auto done1 = chrono::high_resolution_clock::now();
+        double elapsedTime =
+            static_cast<double>(
+                chrono::duration_cast<chrono::microseconds>(done1 - started1)
+                    .count()) /
+            1e6;
+        if (elapsedTime > params.timeLimit) {
+            break;
+        }
     }
 
-    auto done = chrono::high_resolution_clock::now();
+    auto done2 = chrono::high_resolution_clock::now();
     time += static_cast<double>(
-                chrono::duration_cast<chrono::microseconds>(done - started)
+                chrono::duration_cast<chrono::microseconds>(done2 - started2)
                     .count()) /
             1e6;
 
@@ -212,7 +222,7 @@ SRI_SEPARATION_STATUS SRISeparator::singleScenarioMIPModel(
     model.set(GRB_IntAttr_ModelSense, GRB_MAXIMIZE);
     model.set(GRB_DoubleParam_TimeLimit, 30);
     model.set(GRB_IntParam_MIPFocus, 1);
-    // model.set(GRB_DoubleParam_MIPGap, 1e-3);
+    model.set(GRB_DoubleParam_MIPGap, 1e-3);
     model.set(GRB_IntParam_Threads, 1);
     env.set(GRB_IntParam_LogToConsole, 0);
 

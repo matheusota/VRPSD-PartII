@@ -201,7 +201,8 @@ void NodeScenariosModel::solveLPAndUpdateSolutions(EdgeValueMap &xValue,
 }
 
 void NodeScenariosModel::solveRootLP(
-    std::chrono::time_point<std::chrono::high_resolution_clock> &started) {
+    const std::chrono::time_point<std::chrono::high_resolution_clock>
+        &started) {
     int it = 0;
     int countCuts = 0;
     EdgeValueMap xValue(instance.g, 0.0);
@@ -257,7 +258,8 @@ void NodeScenariosModel::solveRootLP(
 
         SRI_SEPARATION_STATUS status = SRI_SEPARATION_STATUS::NO_CUTS;
         if (separatedCuts.empty()) {
-            sriSeparator.mipSeparation(candX, candY, separatedCuts, status);
+            sriSeparator.mipSeparation(candX, candY, started, separatedCuts,
+                                       status);
             if (params.inOut) {
                 lambda = 0.3;
             }

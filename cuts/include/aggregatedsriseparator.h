@@ -40,7 +40,7 @@ class AggregatedSRISeparator {
     OptimalRecourseHelper optimalRecourseHelper;
 
     // Digraph for the network flow heuristic.
-    double flowRoundFactor = 1e6;
+    double flowRoundFactor = 1e3;
     Digraph flowGraph;
     DNode newSource;
 
