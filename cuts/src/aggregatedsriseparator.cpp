@@ -115,7 +115,7 @@ int AggregatedSRISeparator::addCutFromSetSimple(
             continue;
         }
 
-        RHS += currBound - static_cast<int>(customers.size());
+        RHS += currBound - static_cast<double>(customers.size());
         countScenarios++;
     }
 
@@ -128,9 +128,8 @@ int AggregatedSRISeparator::addCutFromSetSimple(
 
     for (size_t i = 0; i < customers.size(); i++) {
         for (size_t j = i + 1; j < customers.size(); j++) {
-            Node u = instance.g.nodeFromId(customers[i]);
-            Node v = instance.g.nodeFromId(customers[j]);
-            Edge e = findEdge(instance.g, u, v);
+            Edge e = findEdge(instance.g, instance.g.nodeFromId(customers[i]),
+                              instance.g.nodeFromId(customers[j]));
             assert(e != INVALID);
             cutData.edgePairs.push_back({e, -countScenarios});
             cutData.LHS += -countScenarios * xValue[e];

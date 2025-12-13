@@ -91,7 +91,7 @@ void NodeRecourseModel::setBasicModel() {
             y[v] = model.addVar(0.0, instance.nScenarios,
                                 instance.getEdgeRecourseCost(v) /
                                     static_cast<double>(instance.nScenarios),
-                                GRB_INTEGER,
+                                GRB_CONTINUOUS,
                                 "y_" + std::to_string(instance.g.id(v)));
         }
     }
@@ -148,11 +148,6 @@ bool NodeRecourseModel::solve(SVRPSolution &solution) {
     // Change variable types back to integer.
     for (EdgeIt e(instance.g); e != INVALID; ++e) {
         x[e].set(GRB_CharAttr_VType, GRB_INTEGER);
-    }
-    for (NodeIt v(instance.g); v != INVALID; ++v) {
-        if (instance.g.id(v) != 0) {
-            y[v].set(GRB_CharAttr_VType, GRB_INTEGER);
-        }
     }
 
     // Delete inactive cuts.
@@ -236,9 +231,9 @@ void NodeRecourseModel::setSolution(SVRPSolution &solution) {
                 std::cout << y[v].get(GRB_StringAttr_VarName) << " = "
                           << y[v].get(GRB_DoubleAttr_X) << std::endl;
                 solution.modelRecourseCost +=
-                    (instance.getEdgeRecourseCost(v) /
-                     static_cast<double>(instance.nScenarios)) *
-                    y[v].get(GRB_DoubleAttr_X);
+                    (y[v].get(GRB_DoubleAttr_X) *
+                     instance.getEdgeRecourseCost(v)) /
+                    static_cast<double>(instance.nScenarios);
             }
         }
 
