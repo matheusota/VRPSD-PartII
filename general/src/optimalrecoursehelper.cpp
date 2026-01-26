@@ -70,38 +70,53 @@ double OptimalRecourseHelper::getRecourseCost(
 
 double OptimalRecourseHelper::getPartialRouteRecourseCost(
     const PartialRoute &partialRoute) const {
+    std::vector<std::vector<double>> betaDuals(
+        instance.nScenarios, std::vector<double>(instance.n, 0.0));
+    std::unordered_map<std::tuple<int, int, int>, double,
+                       boost::hash<std::tuple<int, int, int>>>
+        alphaDuals;
+    return getPartialRouteRecourseCost(partialRoute, betaDuals, alphaDuals);
+}
+
+double OptimalRecourseHelper::getPartialRouteRecourseCost(
+    const PartialRoute &partialRoute,
+    std::vector<std::vector<double>> &betaDuals,
+    std::unordered_map<std::tuple<int, int, int>, double,
+                       boost::hash<std::tuple<int, int, int>>> &alphaDuals)
+    const {
     if (partialRoute.entries.empty()) {
         return 0.0;
     }
 
-    auto started = chrono::high_resolution_clock::now();
-    double total1 = 0.0;
-    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
-        double DPrecourseCost = getPartialRouteRecourseCostInScenarioWithDP(
-            partialRoute, scenarioId);
-        total1 += DPrecourseCost;
-    }
-    auto done = chrono::high_resolution_clock::now();
-    double time1 =
-        static_cast<double>(
-            chrono::duration_cast<chrono::microseconds>(done - started)
-                .count()) /
-        1e6;
-    totalDPTime += time1;
+    // auto started = chrono::high_resolution_clock::now();
+    // double total1 = 0.0;
+    // for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++)
+    // {
+    //     double DPrecourseCost = getPartialRouteRecourseCostInScenarioWithDP(
+    //         partialRoute, scenarioId);
+    //     total1 += DPrecourseCost;
+    // }
+    // auto done = chrono::high_resolution_clock::now();
+    // double time1 =
+    //     static_cast<double>(
+    //         chrono::duration_cast<chrono::microseconds>(done - started)
+    //             .count()) /
+    //     1e6;
+    // totalDPTime += time1;
 
-    started = chrono::high_resolution_clock::now();
-    double total2 = getPartialRouteRecourseCostWithLP(partialRoute);
-    done = chrono::high_resolution_clock::now();
+    auto started = chrono::high_resolution_clock::now();
+    double total2 =
+        getPartialRouteRecourseCostWithLP(partialRoute, betaDuals, alphaDuals);
+    auto done = chrono::high_resolution_clock::now();
     double time2 =
         static_cast<double>(
             chrono::duration_cast<chrono::microseconds>(done - started)
                 .count()) /
         1e6;
     totalLPTime += time2;
+    // assert(std::abs(total1 - total2) <= 1e-6);
 
-    assert(std::abs(total1 - total2) <= 1e-6);
-
-    return total1 / static_cast<double>(instance.nScenarios);
+    return total2 / static_cast<double>(instance.nScenarios);
 }
 
 double OptimalRecourseHelper::getPartialRouteRecourseCostInScenarioWithDP(
@@ -204,7 +219,11 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostInScenarioWithDP(
 }
 
 double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
-    const PartialRoute &partialRoute) const {
+    const PartialRoute &partialRoute,
+    std::vector<std::vector<double>> &betaDuals,
+    std::unordered_map<std::tuple<int, int, int>, double,
+                       boost::hash<std::tuple<int, int, int>>> &alphaDuals)
+    const {
     GRBModel model(env);
     model.set(GRB_StringAttr_ModelName, "OptimalRecourseModel");
     model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
@@ -214,8 +233,9 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
 
     // Precompute sum of route demands.
     bool noFailures = true;
-    std::vector<std::vector<int>> sumDemands(
-        partialRoute.entries.size(), std::vector<int>(instance.nScenarios, 0));
+    // std::vector<std::vector<int>> sumDemands(
+    //     partialRoute.entries.size(), std::vector<int>(instance.nScenarios,
+    //     0));
     for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
         if (partialRoute.totalScenarioDemands[scenarioId] <=
             instance.capacity) {
@@ -223,11 +243,11 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
         }
 
         noFailures = false;
-        for (size_t i = 0; i < partialRoute.entries.size(); i++) {
-            int accLoad = (i == 0) ? 0 : sumDemands[i - 1][scenarioId];
-            accLoad += partialRoute.entries[i].scenarioDemands[scenarioId];
-            sumDemands[i][scenarioId] = accLoad;
-        }
+        // for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+        //     int accLoad = (i == 0) ? 0 : sumDemands[i - 1][scenarioId];
+        //     accLoad += partialRoute.entries[i].scenarioDemands[scenarioId];
+        //     sumDemands[i][scenarioId] = accLoad;
+        // }
     }
 
     if (noFailures) {
@@ -281,7 +301,7 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
                     j++;
                 }
 
-                // Increase the first index.
+                // Increase the start index.
                 while (
                     std::ceil(
                         (currDemand -
@@ -358,14 +378,14 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
         exit(1);
     }
 
-    double recourseCost = model.get(GRB_DoubleAttr_ObjVal);
+    double primalObj = model.get(GRB_DoubleAttr_ObjVal);
 
-    GRBConstr *modelCons = 0;
-    modelCons = model.getConstrs();
+    // Now we need to construct a dual solution with minimum support.
+    // First, we get the beta coefs.
     double dualObj = 0.0;
-    std::vector<std::tuple<int, int, double>> consDuals;
-    std::vector<std::vector<double>> boundDuals(
-        instance.n, std::vector<double>(instance.nScenarios));
+    std::vector<std::vector<bool>> seletedBetas(std::vector<std::vector<bool>>(
+        instance.nScenarios,
+        std::vector<bool>(instance.n, false))); // This will help later.
     for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
         if (partialRoute.totalScenarioDemands[scenarioId] <=
             instance.capacity) {
@@ -374,16 +394,30 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
 
         for (size_t i = 0; i < partialRoute.entries.size(); i++) {
             for (int id : partialRoute.entries[i].vertices) {
-                boundDuals[id][scenarioId] = std::max(
-                    -customerVar[id][scenarioId].get(GRB_DoubleAttr_RC), 0.0);
-                dualObj -= boundDuals[id][scenarioId];
+                // For bound constraints, the dual is in the reduced cost.
+                betaDuals[scenarioId][id] = std::min(
+                    customerVar[id][scenarioId].get(GRB_DoubleAttr_RC), 0.0);
+                dualObj += betaDuals[scenarioId][id];
+
+                if (betaDuals[scenarioId][id] <= -1e-5) {
+                    seletedBetas[scenarioId][id] = true;
+                }
             }
         }
     }
 
-    for (int i = 0; i < model.get(GRB_IntAttr_NumConstrs); ++i) {
-        if (std::abs(modelCons[i].get(GRB_DoubleAttr_Pi)) > 1e-6) {
-            std::string consName = modelCons[i].get(GRB_StringAttr_ConstrName);
+    // Next, we get the alpha coefs.
+    GRBConstr *modelCons = 0;
+    modelCons = model.getConstrs();
+    double nuCoef = 0.0;
+    for (int consIdx = 0; consIdx < model.get(GRB_IntAttr_NumConstrs);
+         ++consIdx) {
+        double alpha = modelCons[consIdx].get(GRB_DoubleAttr_Pi);
+        double rhs = modelCons[consIdx].get(GRB_DoubleAttr_RHS);
+
+        if (alpha >= 1e-5) {
+            std::string consName =
+                modelCons[consIdx].get(GRB_StringAttr_ConstrName);
             int pos = consName.find_first_of('_');
             std::stringstream ss(consName.substr(pos + 1));
 
@@ -391,14 +425,57 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
             char comma = ',';
             ss >> scenarioId >> comma >> startIdx >> comma >> endIdx;
 
-            consDuals.push_back(std::make_tuple(
-                startIdx, endIdx, modelCons[i].get(GRB_DoubleAttr_Pi)));
-            dualObj += modelCons[i].get(GRB_DoubleAttr_Pi) *
-                       modelCons[i].get(GRB_DoubleAttr_RHS);
+            // Check if we need to update the duals (this is tricky, see the
+            // paper).
+            double supportSize = 0.0;
+            for (size_t i = startIdx; i < endIdx; i++) {
+                for (int id : partialRoute.entries[i].vertices) {
+                    if (seletedBetas[scenarioId][id]) {
+                        supportSize += 1.0;
+                    }
+                }
+            }
+
+            if (rhs - supportSize <= 0.0) {
+                assert(std::abs(rhs - supportSize) <= 1e-6);
+
+                // Compute step size.
+                double stepSize = alpha;
+                for (size_t i = startIdx; i < endIdx; i++) {
+                    for (int id : partialRoute.entries[i].vertices) {
+                        if (betaDuals[scenarioId][id] <= -1e-5) {
+                            stepSize =
+                                std::min(stepSize, -betaDuals[scenarioId][id]);
+                        }
+                    }
+                }
+
+                // Update beta coefs and support.
+                alpha -= stepSize;
+                for (size_t i = startIdx; i < endIdx; i++) {
+                    for (int id : partialRoute.entries[i].vertices) {
+                        if (betaDuals[scenarioId][id] <= -1e-5) {
+                            betaDuals[scenarioId][id] += stepSize;
+
+                            if (std::abs(betaDuals[scenarioId][id]) <= 1e-5) {
+                                seletedBetas[scenarioId][id] = false;
+                            }
+                        }
+                    }
+                }
+            }
+
+            auto t = std::make_tuple(scenarioId, startIdx, endIdx);
+            if (alpha >= 1e-6) {
+                alphaDuals[t] = alpha;
+            }
+
+            // Update dual obj.
+            dualObj += alpha * rhs;
         }
     }
+    delete[] modelCons;
 
-    assert(std::abs(dualObj - recourseCost) <= 1e-6);
-
-    return recourseCost;
+    assert(std::abs(dualObj - primalObj) <= 1e-6);
+    return primalObj;
 }

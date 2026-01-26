@@ -24,9 +24,19 @@ class OptimalRecourseHelper {
     double getRecourseLowerBound(const std::vector<int> &customers,
                                  int nVehicles) const;
     double getRecourseCost(const std::vector<std::vector<int>> &routes) const;
-    double
-    getPartialRouteRecourseCostWithLP(const PartialRoute &partialRoute) const;
+    double getPartialRouteRecourseCostWithLP(
+        const PartialRoute &partialRoute,
+        std::vector<std::vector<double>> &betaDuals,
+        std::unordered_map<std::tuple<int, int, int>, double,
+                           boost::hash<std::tuple<int, int, int>>> &alphaDuals)
+        const;
     double getPartialRouteRecourseCost(const PartialRoute &partialRoute) const;
+    double getPartialRouteRecourseCost(
+        const PartialRoute &partialRoute,
+        std::vector<std::vector<double>> &betaDuals,
+        std::unordered_map<std::tuple<int, int, int>, double,
+                           boost::hash<std::tuple<int, int, int>>> &alphaDuals)
+        const;
     double getPartialRouteRecourseCostInScenarioWithDP(
         const PartialRoute &partialRoute, int scenarioId) const;
 
