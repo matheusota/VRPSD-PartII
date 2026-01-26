@@ -54,16 +54,17 @@ void PartialRoutesBuilder::buildPartialRoutes() {
 
     // Add partial route for singletons.
     for (Node v : singletons) {
-        PartialRoute partialRoute;
+        PartialRoute partialRoute(instance);
         pushNodeIntoPartialRoute(partialRoute, v);
         partialRoute.isRoute = isRoute(partialRoute);
-        checkAndSortPartialRoute(partialRoute);
+        checkSortFillPartialRoute(partialRoute);
 
         // check if 1 + (x(H) - |H| + 1) >= eps
         assert(static_cast<int>(partialRoute.entries.size()) >= 1);
-        if (partialRoute.entries[0].xInside -
-                static_cast<int>(partialRoute.entries[0].vertices.size()) >=
-            -2.0 + EpsForIntegrality) {
+        partialRoute.excess =
+            2.0 + partialRoute.entries[0].xInside -
+            static_cast<double>(partialRoute.entries[0].vertices.size());
+        if (partialRoute.excess >= EpsForIntegrality) {
             partialRoutes.push_back(partialRoute);
         }
     }
@@ -86,7 +87,7 @@ void PartialRoutesBuilder::buildPartialRoutes() {
 
                 // Add partial route corresponding to the path from leaf i
                 // to leaf j.
-                PartialRoute partialRoute;
+                PartialRoute partialRoute(instance);
                 double incrementPartialRoute = 0.0;
                 double totalDemand = 0.0;
                 std::vector<int> vertices;
@@ -104,7 +105,7 @@ void PartialRoutesBuilder::buildPartialRoutes() {
                 }
 
                 partialRoute.isRoute = isRoute(partialRoute);
-                checkAndSortPartialRoute(partialRoute);
+                checkSortFillPartialRoute(partialRoute);
 
                 int kH = static_cast<int>(
                     std::ceil(totalDemand / instance.capacity));
@@ -119,8 +120,9 @@ void PartialRoutesBuilder::buildPartialRoutes() {
                 }
 
                 // Similarly, here we check if 1 + (x(H) - |H| + 1) >= eps.
-                if (incrementPartialRoute - static_cast<int>(vertices.size()) >=
-                    -2.0 + EpsForIntegrality) {
+                partialRoute.excess = 2.0 + incrementPartialRoute -
+                                      static_cast<double>(vertices.size());
+                if (partialRoute.excess >= EpsForIntegrality) {
                     partialRoutes.push_back(partialRoute);
                 }
             }
@@ -198,18 +200,15 @@ void PartialRoutesBuilder::buildSupportGraph() {
     // Delete components whose total edge depot value is different than two.
     Node newDepot = supportGraph.nodeFromId(instance.depot);
     std::vector<Node> toErase = {newDepot};
-    if (!params.scenarioOptimalPRCuts) {
-        for (NodeIt v(supportGraph); v != INVALID; ++v) {
-            if (v == newDepot) {
-                continue;
-            }
+    for (NodeIt v(supportGraph); v != INVALID; ++v) {
+        if (v == newDepot) {
+            continue;
+        }
 
-            assert(componentsMap[v] >= 0 &&
-                   componentsMap[v] < numberOfComponents);
-            if (std::abs(componentEdgeDepotValues[componentsMap[v]] - 2.0) >=
-                EpsForIntegrality) {
-                toErase.push_back(v);
-            }
+        assert(componentsMap[v] >= 0 && componentsMap[v] < numberOfComponents);
+        if (std::abs(componentEdgeDepotValues[componentsMap[v]] - 2.0) >=
+            EpsForIntegrality) {
+            toErase.push_back(v);
         }
     }
 
@@ -339,13 +338,13 @@ void PartialRoutesBuilder::pushNodeIntoPartialRoute(PartialRoute &partialRoute,
         partialRoute.entries.back().xRight = xRight;
     }
 
-    partialRoute.entries.push_back({
-        treeVerticesMap[treeNode],     // vertices
-        treeRecourseCostMap[treeNode], // recourseCost
-        xInside,                       // xInside
-        xRight,                        // xLeft
-        0.0                            // xRight
-    });
+    partialRoute.entries.push_back(
+        PartialRouteEntry(treeVerticesMap[treeNode],     // vertices
+                          treeRecourseCostMap[treeNode], // recourseCost
+                          xInside,                       // xInside
+                          xRight,                        // xLeft
+                          0.0,                           // xRight
+                          instance.nScenarios));
 }
 
 bool PartialRoutesBuilder::isRoute(const PartialRoute &partialRoute) {
@@ -360,10 +359,11 @@ bool PartialRoutesBuilder::isRoute(const PartialRoute &partialRoute) {
 
 // This checks if the partial route is ok and sort the nodes in an unstructured
 // set by their recourse costs.
-void PartialRoutesBuilder::checkAndSortPartialRoute(
+void PartialRoutesBuilder::checkSortFillPartialRoute(
     PartialRoute &partialRoute) {
     std::unordered_set<int> visited;
 
+    // Check and sort each entry.
     for (size_t i = 0; i < partialRoute.entries.size(); i++) {
         if (partialRoute.entries[i].vertices.size() > 1) {
             // Check partial route condition.
@@ -394,5 +394,23 @@ void PartialRoutesBuilder::checkAndSortPartialRoute(
         }
         assert(std::abs(minRecourse - partialRoute.entries[i].recourseCost) <=
                1e-6);
+    }
+
+    // Fill in the scenario demands.
+    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
+        double totalScenarioDemand = 0.0;
+
+        for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+            double scenarioDemand = 0.0;
+
+            for (const int id : partialRoute.entries[i].vertices) {
+                scenarioDemand += instance.scenariosMatrix[id][scenarioId];
+            }
+
+            partialRoute.entries[i].scenarioDemands.push_back(scenarioDemand);
+            totalScenarioDemand += scenarioDemand;
+        }
+
+        partialRoute.totalScenarioDemands.push_back(totalScenarioDemand);
     }
 }

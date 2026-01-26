@@ -1,8 +1,11 @@
 #include "optimalrecoursehelper.h"
 #include "svrpinstance.h"
+#include "partialroute.h"
 
 OptimalRecourseHelper::OptimalRecourseHelper(const SVRPInstance &instance_)
-    : instance(instance_) {}
+    : instance(instance_) {
+    env.set(GRB_IntParam_LogToConsole, 0);
+}
 
 OptimalRecourseHelper::~OptimalRecourseHelper() {}
 
@@ -57,123 +60,12 @@ double OptimalRecourseHelper::getRecourseCost(
     double totalCost = 0.0;
 
     for (size_t i = 0; i < routes.size(); i++) {
-        totalCost += getRouteRecourseCost(routes[i]);
+        PartialRoute partialRoute(instance);
+        partialRoute.buildFromRoute(routes[i]);
+        totalCost += getPartialRouteRecourseCost(partialRoute);
     }
 
     return totalCost;
-}
-
-double OptimalRecourseHelper::getRouteRecourseCost(
-    const std::vector<int> &route) const {
-    double total = 0.0;
-
-    if (route.empty()) {
-        return 0.0;
-    }
-
-    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
-        double DPrecourseCost =
-            getRouteRecourseCostInScenarioWithDP(route, scenarioId);
-        // std::vector<std::unordered_set<int>> tmp;
-        // double LPrecourseCost =
-        //     getRouteRecourseCostInScenarioWithLP(route, scenarioId, tmp);
-        // assert(std::abs(LPrecourseCost - DPrecourseCost) <= 1e-6);
-        total += DPrecourseCost;
-    }
-
-    return total / static_cast<double>(instance.nScenarios);
-}
-
-double OptimalRecourseHelper::getRouteRecourseCostInScenarioWithDP(
-    const std::vector<int> &route, int scenarioId) const {
-    // Ignore scenarios with low demands.
-    double scenarioDemand = 0.0;
-    for (const int id : route) {
-        assert(id >= 0 && id < instance.n);
-        scenarioDemand += instance.scenariosMatrix[id][scenarioId];
-    }
-    if (scenarioDemand <= instance.capacity) {
-        return 0.0;
-    }
-
-    assert(scenarioId >= 0 && scenarioId < instance.nScenarios);
-    assert(static_cast<int>(route.size()) >= 1);
-
-    double bestRecourseCost =
-        instance.classicalRecourseHelper.getRouteRecourseCostInScenario(
-            route, scenarioId, false);
-    std::queue<std::pair<int, int>> queue;
-    std::unordered_map<std::pair<int, int>, double,
-                       boost::hash<std::pair<int, int>>>
-        stateCost;
-    std::unordered_map<std::pair<int, int>, int,
-                       boost::hash<std::pair<int, int>>>
-        stateFailures;
-    queue.push({-1, 0});
-    stateCost[{-1, 0}] = 0.0;
-    stateFailures[{-1, 0}] = 0;
-
-    while (queue.size() > 0) {
-        std::pair<int, int> currState = queue.front();
-        auto [i, demand] = currState;
-        assert(stateCost.find(currState) != stateCost.end() &&
-               stateFailures.find(currState) != stateFailures.end());
-        assert(i >= -1 && i < static_cast<int>(route.size()));
-        assert(demand >= 0 && demand <= static_cast<int>(instance.capacity));
-
-        double currRecourseCost = stateCost[currState];
-        int currFailures = stateFailures[currState];
-        queue.pop();
-        int j = i + 1;
-        if (j == static_cast<int>(route.size())) {
-            if (currRecourseCost <= bestRecourseCost - 1e-6) {
-                bestRecourseCost = currRecourseCost;
-            }
-            continue;
-        }
-
-        // For each state, we have two decisions, return to the depot or
-        // not.
-        assert(route[j] >= 0 && route[j] < instance.n);
-        int nextDemand =
-            demand + instance.scenariosMatrix[route[j]][scenarioId];
-        std::pair<int, int> state1 = {j, nextDemand};
-        std::pair<int, int> state2 = {
-            j, std::max(nextDemand - static_cast<int>(instance.capacity), 0)};
-        double nextRecourseCost =
-            currRecourseCost +
-            instance.getEdgeRecourseCost(instance.g.nodeFromId(route[j]));
-        int nextFailures = currFailures + 1;
-
-        if (nextDemand <= static_cast<int>(instance.capacity)) {
-            if (stateCost.find(state1) == stateCost.end()) {
-                queue.push(state1);
-                stateCost[state1] = currRecourseCost;
-                stateFailures[state1] = currFailures;
-            } else {
-                stateCost[state1] =
-                    std::min(stateCost[state1], currRecourseCost);
-                stateFailures[state1] =
-                    std::min(stateFailures[state1], currFailures);
-            }
-        }
-
-        if (nextDemand >= 1 && nextRecourseCost <= bestRecourseCost) {
-            if (stateCost.find(state2) == stateCost.end()) {
-                queue.push(state2);
-                stateCost[state2] = nextRecourseCost;
-                stateFailures[state2] = nextFailures;
-            } else {
-                stateCost[state2] =
-                    std::min(stateCost[state2], nextRecourseCost);
-                stateFailures[state2] =
-                    std::min(stateFailures[state2], nextFailures);
-            }
-        }
-    }
-
-    stateCost.clear();
-    return bestRecourseCost;
 }
 
 double OptimalRecourseHelper::getPartialRouteRecourseCost(
@@ -182,14 +74,34 @@ double OptimalRecourseHelper::getPartialRouteRecourseCost(
         return 0.0;
     }
 
-    double total = 0.0;
+    auto started = chrono::high_resolution_clock::now();
+    double total1 = 0.0;
     for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
         double DPrecourseCost = getPartialRouteRecourseCostInScenarioWithDP(
             partialRoute, scenarioId);
-        total += DPrecourseCost;
+        total1 += DPrecourseCost;
     }
+    auto done = chrono::high_resolution_clock::now();
+    double time1 =
+        static_cast<double>(
+            chrono::duration_cast<chrono::microseconds>(done - started)
+                .count()) /
+        1e6;
+    totalDPTime += time1;
 
-    return total / static_cast<double>(instance.nScenarios);
+    started = chrono::high_resolution_clock::now();
+    double total2 = getPartialRouteRecourseCostWithLP(partialRoute);
+    done = chrono::high_resolution_clock::now();
+    double time2 =
+        static_cast<double>(
+            chrono::duration_cast<chrono::microseconds>(done - started)
+                .count()) /
+        1e6;
+    totalLPTime += time2;
+
+    assert(std::abs(total1 - total2) <= 1e-6);
+
+    return total1 / static_cast<double>(instance.nScenarios);
 }
 
 double OptimalRecourseHelper::getPartialRouteRecourseCostInScenarioWithDP(
@@ -236,12 +148,9 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostInScenarioWithDP(
         }
 
         // Compute next demand.
-        int nextDemand = 0;
         assert(j >= 0 && j < static_cast<int>(partialRoute.entries.size()));
-        for (const int id : partialRoute.entries[j].vertices) {
-            nextDemand += instance.scenariosMatrix[id][scenarioId];
-        }
-        int accDemand = demand + nextDemand;
+        int accDemand =
+            demand + partialRoute.entries[j].scenarioDemands[scenarioId];
 
         // Create a state that does no recourse.
         if (accDemand <= static_cast<int>(instance.capacity)) {
@@ -294,63 +203,151 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostInScenarioWithDP(
     return bestRecourseCost;
 }
 
-double OptimalRecourseHelper::getRouteRecourseCostInScenarioWithLP(
-    const std::vector<int> &route, int scenarioId,
-    std::vector<std::unordered_set<int>> &tightSubroutes) const {
-    GRBEnv env(true);
-    env.set(GRB_IntParam_OutputFlag, 0);
-    env.start();
+double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
+    const PartialRoute &partialRoute) const {
     GRBModel model(env);
-
     model.set(GRB_StringAttr_ModelName, "OptimalRecourseModel");
     model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
     model.set(GRB_DoubleParam_TimeLimit, 300);
-    model.set(GRB_DoubleParam_MIPGap, 1e-9);
     model.set(GRB_IntParam_Threads, 1);
-    env.set(GRB_IntParam_LogToConsole, 0);
+    // model.set(GRB_IntParam_Aggregate, 2);
+
+    // Precompute sum of route demands.
+    bool noFailures = true;
+    std::vector<std::vector<int>> sumDemands(
+        partialRoute.entries.size(), std::vector<int>(instance.nScenarios, 0));
+    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
+        if (partialRoute.totalScenarioDemands[scenarioId] <=
+            instance.capacity) {
+            continue;
+        }
+
+        noFailures = false;
+        for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+            int accLoad = (i == 0) ? 0 : sumDemands[i - 1][scenarioId];
+            accLoad += partialRoute.entries[i].scenarioDemands[scenarioId];
+            sumDemands[i][scenarioId] = accLoad;
+        }
+    }
+
+    if (noFailures) {
+        return 0.0;
+    }
 
     // Customer variables.
-    std::vector<GRBVar> customerVar(route.size());
-    for (size_t i = 0; i < route.size(); i++) {
-        Node v = instance.g.nodeFromId(route[i]);
+    std::vector<std::vector<GRBVar>> customerVar(
+        instance.n, std::vector<GRBVar>(instance.nScenarios));
+    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
+        if (partialRoute.totalScenarioDemands[scenarioId] <=
+            instance.capacity) {
+            continue;
+        }
 
-        customerVar[i] = model.addVar(
-            0.0, GRB_INFINITY, instance.getEdgeRecourseCost(v), GRB_CONTINUOUS,
-            "customer_recourse_" + std::to_string(route[i]) + "_scen_" +
-                std::to_string(scenarioId));
+        for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+            for (int id : partialRoute.entries[i].vertices) {
+                assert(id >= 1 && id < instance.n);
+                Node v = instance.g.nodeFromId(id);
+                customerVar[id][scenarioId] = model.addVar(
+                    0.0, 1.0, instance.getEdgeRecourseCost(v), GRB_CONTINUOUS,
+                    "customer_recourse_" + std::to_string(id) + "_scen_" +
+                        std::to_string(scenarioId));
+            }
+        }
     }
     model.update();
 
-    // Precompute sum of route demands.
-    std::vector<int> sumDemands(route.size(), 0);
-    for (size_t i = 0; i < route.size(); i++) {
-        int prev = (i == 0) ? 0 : sumDemands[i - 1];
-        assert(route[i] >= 0 && route[i] < instance.n);
-        sumDemands[i] = prev + instance.scenariosMatrix[route[i]][scenarioId];
-    }
-
-    // Subroute constraints.
-    for (size_t i = 0; i < route.size(); i++) {
-        for (size_t j = i; j < route.size(); j++) {
-            int prev = (i == 0) ? 0 : sumDemands[i - 1];
-            int subrouteDemand = sumDemands[j] - prev;
-
-            if (subrouteDemand <= static_cast<int>(instance.capacity)) {
-                continue;
-            }
-
-            GRBLinExpr expr = 0.0;
-            std::string consName = "route_";
-            for (size_t k = i; k <= j; k++) {
-                expr += customerVar[k];
-                consName += std::to_string(route[k]) + ",";
-            }
-            consName += "#" + std::to_string(i) + "," + std::to_string(j);
-
-            model.addConstr(
-                expr >= std::ceil(subrouteDemand / instance.capacity) - 1,
-                consName);
+    // Add constraints.
+    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
+        if (partialRoute.totalScenarioDemands[scenarioId] <=
+            instance.capacity) {
+            continue;
         }
+
+        int limit = std::ceil(partialRoute.totalScenarioDemands[scenarioId] /
+                              instance.capacity);
+
+        for (int t = 2; t <= limit; t++) {
+            // Sliding window that tracks subpartial routes.
+            size_t i = 0;
+            size_t j = 0;
+            double currDemand = 0.0;
+
+            while (i < partialRoute.entries.size()) {
+                // Find the end index of the subpartial route.
+                while (j < partialRoute.entries.size() &&
+                       std::ceil(currDemand / instance.capacity) < t) {
+                    currDemand +=
+                        partialRoute.entries[j].scenarioDemands[scenarioId];
+                    j++;
+                }
+
+                // Increase the first index.
+                while (
+                    std::ceil(
+                        (currDemand -
+                         partialRoute.entries[i].scenarioDemands[scenarioId]) /
+                        instance.capacity) >= t) {
+                    currDemand -=
+                        partialRoute.entries[i].scenarioDemands[scenarioId];
+                    i++;
+                }
+
+                assert(i < j);
+
+                // Found a minimal set, add constraint only if `ceil(currDemand
+                // / C) = t`.
+                if (static_cast<int>(
+                        std::ceil(currDemand / instance.capacity)) == t) {
+                    GRBLinExpr expr = 0.0;
+                    for (size_t k = i; k < j; k++) {
+                        for (int id : partialRoute.entries[k].vertices) {
+                            expr += customerVar[id][scenarioId];
+                        }
+                    }
+                    std::string consName =
+                        "cons_" + std::to_string(scenarioId) + "," +
+                        std::to_string(i) + "," + std::to_string(j);
+                    model.addConstr(expr >= t - 1, consName);
+                }
+
+                currDemand -=
+                    partialRoute.entries[i].scenarioDemands[scenarioId];
+                i++;
+            }
+        }
+
+        // Different way of adding constraints (slower).
+        // for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+        //     // We use this vector to avoid adding redundant constraints.
+        //     std::vector<bool> addedConstraint(failLimit + 1, false);
+        //     addedConstraint[0] = true;
+        //     addedConstraint[1] = true;
+
+        //     for (size_t j = i; j < partialRoute.entries.size(); j++) {
+        //         int prev = (i == 0) ? 0 : sumDemands[i - 1][scenarioId];
+        //         int subrouteDemand = sumDemands[j][scenarioId] - prev;
+        //         int currentFail = std::ceil(subrouteDemand /
+        //         instance.capacity);
+
+        //         if (addedConstraint[currentFail]) {
+        //             continue;
+        //         }
+        //         addedConstraint[currentFail] = true;
+
+        //         GRBLinExpr expr = 0.0;
+        //         for (size_t k = i; k <= j; k++) {
+        //             for (int id : partialRoute.entries[k].vertices) {
+        //                 expr += customerVar[id][scenarioId];
+        //             }
+        //         }
+        //         std::string consName = "cons_" + std::to_string(scenarioId) +
+        //                                "," + std::to_string(i) + "," +
+        //                                std::to_string(j);
+        //         model.addConstr(
+        //             expr >= std::ceil(subrouteDemand / instance.capacity) -
+        //             1, consName);
+        //     }
+        // }
     }
 
     model.update();
@@ -365,23 +362,43 @@ double OptimalRecourseHelper::getRouteRecourseCostInScenarioWithLP(
 
     GRBConstr *modelCons = 0;
     modelCons = model.getConstrs();
+    double dualObj = 0.0;
+    std::vector<std::tuple<int, int, double>> consDuals;
+    std::vector<std::vector<double>> boundDuals(
+        instance.n, std::vector<double>(instance.nScenarios));
+    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
+        if (partialRoute.totalScenarioDemands[scenarioId] <=
+            instance.capacity) {
+            continue;
+        }
+
+        for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+            for (int id : partialRoute.entries[i].vertices) {
+                boundDuals[id][scenarioId] = std::max(
+                    -customerVar[id][scenarioId].get(GRB_DoubleAttr_RC), 0.0);
+                dualObj -= boundDuals[id][scenarioId];
+            }
+        }
+    }
 
     for (int i = 0; i < model.get(GRB_IntAttr_NumConstrs); ++i) {
         if (std::abs(modelCons[i].get(GRB_DoubleAttr_Pi)) > 1e-6) {
             std::string consName = modelCons[i].get(GRB_StringAttr_ConstrName);
-            int pos = consName.find_first_of('#');
-            std::string tmp = consName.substr(pos + 1);
-            pos = tmp.find_first_of(',');
-            int first = std::stoi(tmp.substr(0, pos));
-            int second = std::stoi(tmp.substr(pos + 1));
+            int pos = consName.find_first_of('_');
+            std::stringstream ss(consName.substr(pos + 1));
 
-            std::unordered_set<int> subroute;
-            for (int j = first; j <= second; j++) {
-                subroute.insert(route[j]);
-            }
-            tightSubroutes.push_back(subroute);
+            int scenarioId, startIdx, endIdx;
+            char comma = ',';
+            ss >> scenarioId >> comma >> startIdx >> comma >> endIdx;
+
+            consDuals.push_back(std::make_tuple(
+                startIdx, endIdx, modelCons[i].get(GRB_DoubleAttr_Pi)));
+            dualObj += modelCons[i].get(GRB_DoubleAttr_Pi) *
+                       modelCons[i].get(GRB_DoubleAttr_RHS);
         }
     }
+
+    assert(std::abs(dualObj - recourseCost) <= 1e-6);
 
     return recourseCost;
 }

@@ -1,7 +1,7 @@
 #include "partialrouteseparator.h"
 #include "partialroutesbuilder.h"
 
-PartialRouteSeparator::PartialRouteSeparator(const SVRPInstance &instance,
+PartialRouteSeparator::PartialRouteSeparator(SVRPInstance &instance,
                                              const Params &params)
     : instance(instance), params(params) {}
 
@@ -41,7 +41,8 @@ int PartialRouteSeparator::separatePartialRouteCuts(
         // Compare costs.
         bool useSimpleAdherenceCuts = false;
         double recourseCostToUse = partialRouteClassicalCost;
-        if (currCost + EpsForIntegrality <= partialRouteOptimalCost) {
+        if (params.policy == SCENARIO_OPTIMAL ||
+            currCost + EpsForIntegrality <= partialRouteOptimalCost) {
             recourseCostToUse = partialRouteOptimalCost;
             useSimpleAdherenceCuts = true;
         }

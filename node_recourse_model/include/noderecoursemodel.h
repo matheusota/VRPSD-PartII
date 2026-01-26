@@ -29,7 +29,7 @@
 
 class NodeRecourseModel {
   public:
-    NodeRecourseModel(const SVRPInstance &instance, const Params &params,
+    NodeRecourseModel(SVRPInstance &instance, const Params &params,
                       CutPool *cutPool_ = nullptr);
 
     bool solve(SVRPSolution &solution);

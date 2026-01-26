@@ -126,14 +126,9 @@ double ClassicalRecourseHelper::getPartialRouteRecourseAndFailureNodes(
 
         for (int i = 0; i < routeSize; i++) {
             // Compute the partial route entry demand.
-            int demand1 = 0;
-            int demand2 = 0;
-            for (int id : partialRoute.entries[i].vertices) {
-                demand1 += instance.scenariosMatrix[id][s];
-            }
-            for (int id : partialRoute.entries[routeSize - 1 - i].vertices) {
-                demand2 += instance.scenariosMatrix[id][s];
-            }
+            int demand1 = partialRoute.entries[i].scenarioDemands[s];
+            int demand2 =
+                partialRoute.entries[routeSize - 1 - i].scenarioDemands[s];
 
             // Get fail count.
             int fail1 = 0;

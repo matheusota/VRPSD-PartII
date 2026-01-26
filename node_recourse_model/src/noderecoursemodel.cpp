@@ -1,6 +1,6 @@
 #include "noderecoursemodel.h"
 
-NodeRecourseModel::NodeRecourseModel(const SVRPInstance &instance,
+NodeRecourseModel::NodeRecourseModel(SVRPInstance &instance,
                                      const Params &params, CutPool *cutPool_)
     : instance(instance), params(params), model(env), x(instance.g),
       y(instance.g), cutBuilder(instance, params, x, y),
@@ -252,6 +252,12 @@ void NodeRecourseModel::setSolution(SVRPSolution &solution) {
         std::cout << "Classical recourse cost " << solution.recourseCost
                   << endl;
         std::cout << "Root bound: " << solution.rootBound << std::endl;
+        std::cout << "Total DP time: "
+                  << instance.optimalRecourseHelper.totalDPTime << " s"
+                  << std::endl;
+        std::cout << "Total LP time: "
+                  << instance.optimalRecourseHelper.totalLPTime << " s"
+                  << std::endl;
 
         if (params.policy == SCENARIO_OPTIMAL) {
             assert(std::abs(solution.modelRecourseCost -

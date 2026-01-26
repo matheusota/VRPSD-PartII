@@ -64,7 +64,7 @@ class PartialRoutesBuilder {
     void buildBlockCutTree();
     void pushNodeIntoPartialRoute(PartialRoute &partialRoute, Node treeNode);
     bool isRoute(const PartialRoute &partialRoute);
-    void checkAndSortPartialRoute(PartialRoute &partialRoute);
+    void checkSortFillPartialRoute(PartialRoute &partialRoute);
 };
 
 #endif // PARTIALROUTESBUILDER_H

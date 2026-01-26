@@ -26,7 +26,7 @@ class PartialRouteSeparator {
     int elementaryCuts = 0;
     double time = 0.0;
 
-    PartialRouteSeparator(const SVRPInstance &instance, const Params &params);
+    PartialRouteSeparator(SVRPInstance &instance, const Params &params);
 
     int separatePartialRouteCuts(const EdgeValueMap &xValue,
                                  const NodeValueMap &recourseValue,
@@ -34,7 +34,7 @@ class PartialRouteSeparator {
                                  std::vector<CutData> &separatedCuts);
 
   private:
-    const SVRPInstance &instance;
+    SVRPInstance &instance;
     const Params &params;
     double EpsForIntegrality = 1e-4;
 
