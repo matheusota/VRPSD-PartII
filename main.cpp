@@ -122,7 +122,9 @@ Params getParams(int argc, const char *argv[]) {
             cxxopts::value<bool>(params.sriFlowSeparation)
                 ->default_value("false"))(
             "inout", "Use in and out separation.",
-            cxxopts::value<bool>(params.inOut)->default_value("false"));
+            cxxopts::value<bool>(params.inOut)->default_value("false"))(
+            "projectedSRI", "Use projected SRIs.",
+            cxxopts::value<bool>(params.projectedSRI)->default_value("false"));
 
         auto result = options.parse(argc, argv);
 
@@ -139,6 +141,10 @@ Params getParams(int argc, const char *argv[]) {
 
         if (result["scenarioOptimal"].as<bool>()) {
             params.policy = SCENARIO_OPTIMAL;
+            params.scenarioOptimalPRCuts = true;
+        }
+
+        if (params.projectedSRI) {
             params.scenarioOptimalPRCuts = true;
         }
     } catch (std::exception &e) {

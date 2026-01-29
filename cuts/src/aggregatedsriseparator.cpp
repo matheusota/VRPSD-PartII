@@ -49,7 +49,7 @@ int AggregatedSRISeparator::addCutFromSet(const EdgeValueMap &xValue,
 
     int addedCuts =
         addCutFromSetSimple(xValue, yValue, customers, separatedCuts);
-    // addedCuts =
+    // int addedCuts =
     //     addCutFromSetWithDual(xValue, yValue, customers, separatedCuts);
 
     auto done = chrono::high_resolution_clock::now();
@@ -283,4 +283,116 @@ int AggregatedSRISeparator::flowSeparationFromScenarios(
     }
 
     return addedCuts;
+}
+
+int AggregatedSRISeparator::addCutFromSetWithDual(
+    const EdgeValueMap &xValue, const NodeValueMap &yValue,
+    const std::vector<int> &customers, std::vector<CutData> &separatedCuts) {
+    double totalDemand = 0.0;
+    for (int id : customers) {
+        Node v = instance.g.nodeFromId(id);
+        assert(id >= 1 && id < instance.n && v != INVALID);
+        totalDemand += instance.demand[v];
+
+        // There are some instances with zero recourse cost, we ignore those.
+        if (instance.getEdgeRecourseCost(v) <= 1e-6) {
+            return 0;
+        }
+    }
+    int nVehicles =
+        static_cast<int>(std::ceil(totalDemand / instance.capacity));
+
+    // Sort customers by their recourse values.
+    std::vector<std::pair<double, int>> sortedRecourse;
+    for (const int id : customers) {
+        assert(id >= 1 && id < instance.n);
+        Node v = instance.g.nodeFromId(id);
+        sortedRecourse.push_back({instance.getEdgeRecourseCost(v), id});
+    }
+    std::sort(sortedRecourse.begin(), sortedRecourse.end());
+
+    // Construct cut using dual solutions.
+    double lowerBound = 0.0;
+    double alpha = 0.0;
+    NodeValueMap betaCoefs(instance.g, 0.0);
+    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
+        // Get sum of scenario demands.
+        double scenarioDemand = 0.0;
+        for (const int id : customers) {
+            scenarioDemand += instance.scenariosMatrix[id][scenarioId];
+        }
+        int currBound = std::ceil(scenarioDemand / instance.capacity);
+        if (currBound <= 1) {
+            continue;
+        }
+
+        // When using capacity constraints, we check if k^s(U) \leq \bar{k}(U).
+        if (!params.basicVRPSD && currBound <= nVehicles) {
+            continue;
+        }
+
+        // Get scenario critical item.
+        size_t failIndex = static_cast<size_t>(currBound - nVehicles - 1);
+        assert(failIndex >= 0 && failIndex < sortedRecourse.size());
+        alpha += sortedRecourse[failIndex].first;
+
+        // Compute lower bound and set beta.
+        lowerBound += sortedRecourse[failIndex].first;
+        for (size_t i = 0; i < sortedRecourse.size(); i++) {
+            int id = sortedRecourse[i].second;
+            assert(id >= 1 && id < instance.n);
+            Node v = instance.g.nodeFromId(id);
+            if (i < failIndex) {
+                betaCoefs[v] = std::max(betaCoefs[v], sortedRecourse[i].first);
+                lowerBound += sortedRecourse[i].first;
+            } else {
+                betaCoefs[v] =
+                    std::max(betaCoefs[v], sortedRecourse[failIndex].first);
+            }
+        }
+    }
+
+    if (lowerBound <= EpsForIntegrality) {
+        return 0;
+    }
+
+    // Construct cut.
+    CutData cutData;
+    cutData.RHS =
+        lowerBound + alpha * (nVehicles - static_cast<int>(customers.size()));
+    cutData.sense = '>';
+    cutData.name = "AggregatedSRI-Dual";
+    cutData.LHS = 0.0;
+
+    for (size_t i = 0; i < customers.size(); i++) {
+        for (size_t j = i + 1; j < customers.size(); j++) {
+            Node u = instance.g.nodeFromId(customers[i]);
+            Node v = instance.g.nodeFromId(customers[j]);
+            Edge e = findEdge(instance.g, u, v);
+            assert(e != INVALID);
+            cutData.edgePairs.push_back(std::make_pair(e, -alpha));
+            cutData.LHS += -alpha * xValue[e];
+        }
+    }
+
+    for (const int id : customers) {
+        Node v = instance.g.nodeFromId(id);
+        assert(v != INVALID);
+        cutData.nodePairs.push_back(
+            std::make_pair(id, (betaCoefs[v] * instance.nScenarios) /
+                                   instance.getEdgeRecourseCost(v)));
+        cutData.LHS += ((betaCoefs[v] * instance.nScenarios) /
+                        instance.getEdgeRecourseCost(v)) *
+                       yValue[v];
+        cutData.customers.push_back(id);
+    }
+
+    if (cutData.LHS >= cutData.RHS - EpsForIntegrality) {
+        return 0;
+    } else {
+        cutData.violation = cutData.RHS - cutData.LHS;
+        nCuts++;
+        separatedCuts.push_back(cutData);
+        return 1;
+    }
 }

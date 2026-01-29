@@ -21,5 +21,6 @@ typedef struct structParams {
     bool basicVRPSD = false;
     bool sriFlowSeparation = false;
     bool inOut = false;
+    bool projectedSRI = false;
 } Params;
 #endif // PARAMS_H

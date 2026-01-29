@@ -55,6 +55,10 @@ class AggregatedSRISeparator {
                             const NodeValueMap &yValue,
                             const std::vector<int> &customers,
                             std::vector<CutData> &separatedCuts);
+    int addCutFromSetWithDual(const EdgeValueMap &xValue,
+                              const NodeValueMap &yValue,
+                              const std::vector<int> &customers,
+                              std::vector<CutData> &separatedCuts);
 };
 
 #endif // AGGREGATEDSRISEPARATOR_H

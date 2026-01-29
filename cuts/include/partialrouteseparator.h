@@ -7,6 +7,7 @@
 #include <cassert>
 #include <lemon/list_graph.h>
 #include <lemon/connectivity.h>
+#include <boost/functional/hash.hpp>
 #include <lemon/dfs.h>
 #include <list>
 #include <utility>
@@ -49,10 +50,20 @@ class PartialRouteSeparator {
     void setCoefficientsToSet(int from, const std::vector<int> &vertices,
                               double coef, EdgeValueMap &edgeCoefs);
     bool addCutFromCoefs(const EdgeValueMap &xValue,
-                         const std::vector<Node> &nodesToConsider,
                          const NodeValueMap &recourseValue,
-                         const EdgeValueMap &edgeCoefs, double RHS,
+                         const EdgeValueMap &edgeCoefs,
+                         const NodeValueMap &nodeCoefs, double RHS,
                          std::vector<CutData> &separatedCuts);
+
+    void setCutCoefficientsFromDual(
+        const PartialRoute &partialRoute, const EdgeValueMap &xValue,
+        double recourseCost,
+        const std::unordered_map<std::pair<int, int>, double,
+                                 boost::hash<std::pair<int, int>>> &betaDuals,
+        const std::unordered_map<std::tuple<int, int, int>, double,
+                                 boost::hash<std::tuple<int, int, int>>>
+            &alphaDuals,
+        EdgeValueMap &edgeCoefs, NodeValueMap &nodeCoefs, double &RHS) const;
 };
 
 #endif // GRBPARTIALROUTESEPARATOR_H

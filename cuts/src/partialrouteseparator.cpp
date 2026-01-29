@@ -14,27 +14,40 @@ int PartialRouteSeparator::separatePartialRouteCuts(
 
     // Add inequalities for each partial route.
     for (const PartialRoute &partialRoute : partialRoutes) {
+        assert(partialRoute.excess >= EpsForIntegrality);
+
         // Get partial route costs.
         NodeValueMap nodeRecourseMap(instance.g, 0.0);
         double partialRouteClassicalCost =
             instance.classicalRecourseHelper
                 .getPartialRouteRecourseAndFailureNodes(partialRoute,
                                                         nodeRecourseMap);
+        std::unordered_map<std::pair<int, int>, double,
+                           boost::hash<std::pair<int, int>>>
+            betaDuals;
+        std::unordered_map<std::tuple<int, int, int>, double,
+                           boost::hash<std::tuple<int, int, int>>>
+            alphaDuals;
         double partialRouteOptimalCost = 0.0;
         if (params.scenarioOptimalPRCuts) {
             partialRouteOptimalCost =
                 instance.optimalRecourseHelper.getPartialRouteRecourseCost(
-                    partialRoute);
+                    partialRoute, betaDuals, alphaDuals);
         }
-        double currCost = 0.0;
-        std::vector<Node> nodesToConsider;
+
+        if (partialRouteOptimalCost <= EpsForIntegrality &&
+            partialRouteClassicalCost <= EpsForIntegrality) {
+            continue;
+        }
 
         // Pass through all nodes in the partial route.
+        double currCost = 0.0;
+        NodeValueMap nodeCoefs(instance.g, 0.0);
         for (const PartialRouteEntry &entry : partialRoute.entries) {
             for (int id : entry.vertices) {
                 Node v = instance.g.nodeFromId(id);
                 currCost += recourseValue[v];
-                nodesToConsider.push_back(v);
+                nodeCoefs[v] = 1.0;
             }
         }
 
@@ -54,13 +67,19 @@ int PartialRouteSeparator::separatePartialRouteCuts(
         // Setup the coefficients for the inequality.
         double RHS = 0.0;
         EdgeValueMap edgeCoefs(instance.g, 0.0);
-        setCutCoefficientsNew(partialRoute, recourseCostToUse, edgeCoefs, RHS,
-                              useSimpleAdherenceCuts,
-                              params.scenarioOptimalPRCuts);
+        if (params.projectedSRI) {
+            setCutCoefficientsFromDual(partialRoute, xValue, recourseCostToUse,
+                                       betaDuals, alphaDuals, edgeCoefs,
+                                       nodeCoefs, RHS);
+        } else {
+            setCutCoefficientsNew(partialRoute, recourseCostToUse, edgeCoefs,
+                                  RHS, useSimpleAdherenceCuts,
+                                  params.scenarioOptimalPRCuts);
+        }
 
         // Add inequality.
-        if (addCutFromCoefs(xValue, nodesToConsider, recourseValue, edgeCoefs,
-                            RHS, separatedCuts)) {
+        if (addCutFromCoefs(xValue, recourseValue, edgeCoefs, nodeCoefs, RHS,
+                            separatedCuts)) {
             nSepCuts++;
         }
     }
@@ -194,11 +213,149 @@ void PartialRouteSeparator::setCutCoefficientsNew(
     RHS *= recourseCost;
 }
 
+void PartialRouteSeparator::setCutCoefficientsFromDual(
+    const PartialRoute &partialRoute, const EdgeValueMap &xValue,
+    double recourseCost,
+    const std::unordered_map<std::pair<int, int>, double,
+                             boost::hash<std::pair<int, int>>> &betaDuals,
+    const std::unordered_map<std::tuple<int, int, int>, double,
+                             boost::hash<std::tuple<int, int, int>>>
+        &alphaDuals,
+    EdgeValueMap &edgeCoefs, NodeValueMap &nodeCoefs, double &RHS) const {
+    // Zero out coefficients.
+    for (const PartialRouteEntry &entry : partialRoute.entries) {
+        for (int id : entry.vertices) {
+            nodeCoefs[instance.g.nodeFromId(id)] = 0.0;
+        }
+    }
+    RHS = 0.0;
+
+    // Auxilary vector to store accumulated demand.
+    std::vector<std::vector<int>> sumDemands(
+        instance.nScenarios, std::vector<int>(partialRoute.entries.size(), 0));
+    std::vector<int> sumSizes(partialRoute.entries.size(), 0);
+    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
+        if (partialRoute.totalScenarioDemands[scenarioId] <=
+            instance.capacity) {
+            continue;
+        }
+
+        int accLoad = 0;
+        for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+            accLoad += partialRoute.entries[i].scenarioDemands[scenarioId];
+            sumDemands[scenarioId][i] = accLoad;
+        }
+    }
+
+    int accSize = 0;
+    for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+        accSize += partialRoute.entries[i].vertices.size();
+        sumSizes[i] = accSize;
+    }
+
+    // Create copies of dual variables to modify later.
+    std::vector<std::vector<double>> nodeCoefsAux(
+        instance.nScenarios,
+        std::vector<double>(instance.n, 0.0)); // [scenarioId][nodeId]
+    std::unordered_map<std::pair<int, int>, double,
+                       boost::hash<std::pair<int, int>>>
+        alphaAux; // [startIdx, endIdx]
+
+    for (const auto &[key, value] : betaDuals) {
+        const auto &[scenarioId, id] = key;
+        nodeCoefsAux[scenarioId][id] = value;
+    }
+
+    // Iterate through alphaDuals to form alphaAux and update betaAux.
+    for (const auto &[key, value] : alphaDuals) {
+        double alpha = value / static_cast<double>(instance.nScenarios);
+        const auto &[scenarioId, startIdx, endIdx] = key;
+        assert(partialRoute.totalScenarioDemands[scenarioId] >
+               instance.capacity);
+
+        alphaAux[{startIdx, endIdx}] += alpha;
+        for (size_t i = startIdx; i < endIdx; i++) {
+            for (int id : partialRoute.entries[i].vertices) {
+                nodeCoefsAux[scenarioId][id] +=
+                    value; // Not divided by nScenarios here.
+            }
+        }
+
+        // Increment RHS by alpha * (ceil(d^\xi(H') / capacity) - |H'|).
+        double startDemand =
+            (startIdx == 0) ? 0.0 : sumDemands[scenarioId][startIdx - 1];
+        double startSize = (startIdx == 0) ? 0.0 : sumSizes[startIdx - 1];
+        RHS += alpha *
+               (std::ceil((sumDemands[scenarioId][endIdx - 1] - startDemand) /
+                          instance.capacity) -
+                (sumSizes[endIdx - 1] - startSize));
+    }
+
+    // Set node coefficients.
+    for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
+        if (partialRoute.totalScenarioDemands[scenarioId] <=
+            instance.capacity) {
+            continue;
+        }
+
+        for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+            for (int id : partialRoute.entries[i].vertices) {
+                Node v = instance.g.nodeFromId(id);
+                std::pair<int, int> key{scenarioId, id};
+                double aux =
+                    nodeCoefsAux[scenarioId]
+                                [id]; // This is confusing, if we replace
+                                      // in the formula, we divide and
+                                      // multiply by nScenarios.
+                nodeCoefs[v] = std::max(
+                    nodeCoefs[v], (aux / instance.getEdgeRecourseCost(v)));
+                if (betaDuals.find(key) != betaDuals.end()) {
+                    RHS += betaDuals.at(key) /
+                           static_cast<double>(instance.nScenarios);
+                }
+            }
+        }
+    }
+
+    // Set edge coefficients.
+    double checkRHS = RHS;
+    for (const auto &[key, alpha] : alphaAux) {
+        const auto &[startIdx, endIdx] = key;
+        std::vector<int> vertices;
+
+        for (size_t i = startIdx; i < endIdx; i++) {
+            for (int id : partialRoute.entries[i].vertices) {
+                vertices.push_back(id);
+            }
+        }
+
+        for (size_t i = 0; i < vertices.size(); i++) {
+            Node u = instance.g.nodeFromId(vertices[i]);
+            for (size_t j = i + 1; j < vertices.size(); j++) {
+                Node v = instance.g.nodeFromId(vertices[j]);
+                Edge e = findEdge(instance.g, u, v);
+                assert(e != INVALID);
+                edgeCoefs[e] -= alpha;
+                checkRHS += alpha * xValue[e];
+            }
+        }
+    }
+
+    // Check if the cut dominates the ILS cut.
+    for (size_t i = 0; i < partialRoute.entries.size(); i++) {
+        for (int id : partialRoute.entries[i].vertices) {
+            Node v = instance.g.nodeFromId(id);
+            assert(nodeCoefs[v] <= 1.0 + EpsForIntegrality);
+        }
+    }
+    assert(checkRHS >= partialRoute.excess * recourseCost - EpsForIntegrality);
+}
+
 // The return value of this indicates if the inequality is violated or not.
 bool PartialRouteSeparator::addCutFromCoefs(
-    const EdgeValueMap &xValue, const std::vector<Node> &nodesToConsider,
-    const NodeValueMap &recourseValue, const EdgeValueMap &edgeCoefs,
-    double RHS, std::vector<CutData> &separatedCuts) {
+    const EdgeValueMap &xValue, const NodeValueMap &recourseValue,
+    const EdgeValueMap &edgeCoefs, const NodeValueMap &nodeCoefs, double RHS,
+    std::vector<CutData> &separatedCuts) {
     separatedCuts.emplace_back(CutData());
     CutData &cutData = separatedCuts.back();
     cutData.RHS = RHS;
@@ -206,11 +363,13 @@ bool PartialRouteSeparator::addCutFromCoefs(
     cutData.LHS = 0.0;
     cutData.name = "PartialRouteCut";
 
-    for (Node v : nodesToConsider) {
-        assert(instance.g.id(v) >= 1 && instance.g.id(v) < instance.n);
-        cutData.nodePairs.push_back({instance.g.id(v), 1.0});
-        cutData.LHS += recourseValue[v];
-        cutData.customers.push_back(instance.g.id(v));
+    for (NodeIt v(instance.g); v != INVALID; ++v) {
+        if (std::abs(nodeCoefs[v]) >= EpsForIntegrality) {
+            assert(instance.g.id(v) >= 1 && instance.g.id(v) < instance.n);
+            cutData.nodePairs.push_back({instance.g.id(v), nodeCoefs[v]});
+            cutData.LHS += nodeCoefs[v] * recourseValue[v];
+            cutData.customers.push_back(instance.g.id(v));
+        }
     }
 
     for (EdgeIt e(instance.g); e != INVALID; ++e) {

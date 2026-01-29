@@ -70,8 +70,9 @@ double OptimalRecourseHelper::getRecourseCost(
 
 double OptimalRecourseHelper::getPartialRouteRecourseCost(
     const PartialRoute &partialRoute) const {
-    std::vector<std::vector<double>> betaDuals(
-        instance.nScenarios, std::vector<double>(instance.n, 0.0));
+    std::unordered_map<std::pair<int, int>, double,
+                       boost::hash<std::pair<int, int>>>
+        betaDuals;
     std::unordered_map<std::tuple<int, int, int>, double,
                        boost::hash<std::tuple<int, int, int>>>
         alphaDuals;
@@ -80,7 +81,8 @@ double OptimalRecourseHelper::getPartialRouteRecourseCost(
 
 double OptimalRecourseHelper::getPartialRouteRecourseCost(
     const PartialRoute &partialRoute,
-    std::vector<std::vector<double>> &betaDuals,
+    std::unordered_map<std::pair<int, int>, double,
+                       boost::hash<std::pair<int, int>>> &betaDuals,
     std::unordered_map<std::tuple<int, int, int>, double,
                        boost::hash<std::tuple<int, int, int>>> &alphaDuals)
     const {
@@ -220,7 +222,8 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostInScenarioWithDP(
 
 double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
     const PartialRoute &partialRoute,
-    std::vector<std::vector<double>> &betaDuals,
+    std::unordered_map<std::pair<int, int>, double,
+                       boost::hash<std::pair<int, int>>> &betaDuals,
     std::unordered_map<std::tuple<int, int, int>, double,
                        boost::hash<std::tuple<int, int, int>>> &alphaDuals)
     const {
@@ -243,8 +246,8 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
         }
 
         noFailures = false;
+        // int accLoad = 0;
         // for (size_t i = 0; i < partialRoute.entries.size(); i++) {
-        //     int accLoad = (i == 0) ? 0 : sumDemands[i - 1][scenarioId];
         //     accLoad += partialRoute.entries[i].scenarioDemands[scenarioId];
         //     sumDemands[i][scenarioId] = accLoad;
         // }
@@ -383,9 +386,10 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
     // Now we need to construct a dual solution with minimum support.
     // First, we get the beta coefs.
     double dualObj = 0.0;
-    std::vector<std::vector<bool>> seletedBetas(std::vector<std::vector<bool>>(
-        instance.nScenarios,
-        std::vector<bool>(instance.n, false))); // This will help later.
+    std::vector<std::unordered_set<int>> selectedBetas(
+        std::vector<std::unordered_set<int>>(
+            instance.nScenarios,
+            std::unordered_set<int>())); // This will help later.
     for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
         if (partialRoute.totalScenarioDemands[scenarioId] <=
             instance.capacity) {
@@ -394,13 +398,12 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
 
         for (size_t i = 0; i < partialRoute.entries.size(); i++) {
             for (int id : partialRoute.entries[i].vertices) {
-                // For bound constraints, the dual is in the reduced cost.
-                betaDuals[scenarioId][id] = std::min(
-                    customerVar[id][scenarioId].get(GRB_DoubleAttr_RC), 0.0);
-                dualObj += betaDuals[scenarioId][id];
-
-                if (betaDuals[scenarioId][id] <= -1e-5) {
-                    seletedBetas[scenarioId][id] = true;
+                double rc = customerVar[id][scenarioId].get(GRB_DoubleAttr_RC);
+                if (rc <= -1e-5) {
+                    // For bound constraints, the dual is in the reduced cost.
+                    betaDuals[{scenarioId, id}] = rc;
+                    dualObj += rc;
+                    selectedBetas[scenarioId].insert(id);
                 }
             }
         }
@@ -427,45 +430,43 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
 
             // Check if we need to update the duals (this is tricky, see the
             // paper).
-            double supportSize = 0.0;
-            for (size_t i = startIdx; i < endIdx; i++) {
-                for (int id : partialRoute.entries[i].vertices) {
-                    if (seletedBetas[scenarioId][id]) {
-                        supportSize += 1.0;
-                    }
-                }
-            }
+            double supportSize =
+                static_cast<double>(selectedBetas[scenarioId].size());
 
             if (rhs - supportSize <= 0.0) {
                 assert(std::abs(rhs - supportSize) <= 1e-6);
 
                 // Compute step size.
+                std::vector<int> currSupport;
+                currSupport.reserve(selectedBetas[scenarioId].size());
                 double stepSize = alpha;
-                for (size_t i = startIdx; i < endIdx; i++) {
-                    for (int id : partialRoute.entries[i].vertices) {
-                        if (betaDuals[scenarioId][id] <= -1e-5) {
-                            stepSize =
-                                std::min(stepSize, -betaDuals[scenarioId][id]);
-                        }
-                    }
+                for (int id : selectedBetas[scenarioId]) {
+                    stepSize = std::min(stepSize, betaDuals[{scenarioId, id}]);
                 }
 
                 // Update beta coefs and support.
                 alpha -= stepSize;
-                for (size_t i = startIdx; i < endIdx; i++) {
-                    for (int id : partialRoute.entries[i].vertices) {
-                        if (betaDuals[scenarioId][id] <= -1e-5) {
-                            betaDuals[scenarioId][id] += stepSize;
+                for (auto it = selectedBetas[scenarioId].begin();
+                     it != selectedBetas[scenarioId].end();) {
+                    int id = *it;
+                    std::pair<int, int> key{scenarioId, id};
 
-                            if (std::abs(betaDuals[scenarioId][id]) <= 1e-5) {
-                                seletedBetas[scenarioId][id] = false;
-                            }
-                        }
+                    auto mapIt = betaDuals.find(key);
+                    assert(mapIt != betaDuals.end());
+
+                    auto &beta = mapIt->second;
+                    beta += stepSize;
+
+                    if (std::abs(beta) <= 1e-5) {
+                        it = selectedBetas[scenarioId].erase(it);
+                        betaDuals.erase(mapIt);
+                    } else {
+                        ++it;
                     }
                 }
             }
 
-            auto t = std::make_tuple(scenarioId, startIdx, endIdx);
+            std::tuple<int, int, int> t(scenarioId, startIdx, endIdx);
             if (alpha >= 1e-6) {
                 alphaDuals[t] = alpha;
             }

@@ -191,6 +191,9 @@ bool addEntryToTable(const Params &params, const SVRPInstance &instance,
     if (params.sriFlowSeparation) {
         algorithm += "-FLOW";
     }
+    if (params.projectedSRI) {
+        algorithm += "-ProjectedSRI";
+    }
 
     data << algorithm << " , " << params.inputFile << " , " << solution.cost
          << " , " << solution.rootBound << " , "
