@@ -385,11 +385,18 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
 
     // Now we need to construct a dual solution with minimum support.
     // First, we get the beta coefs.
-    double dualObj = 0.0;
-    std::vector<std::unordered_set<int>> selectedBetas(
-        std::vector<std::unordered_set<int>>(
-            instance.nScenarios,
-            std::unordered_set<int>())); // This will help later.
+
+    // This auxiliary map stores the vertices id and the indices in the partial
+    // route.
+    double sumBeta = 0.0;
+    std::vector<std::unordered_set<std::pair<int, int>,
+                                   boost::hash<std::pair<int, int>>>>
+        selectedBetas(
+            std::vector<std::unordered_set<std::pair<int, int>,
+                                           boost::hash<std::pair<int, int>>>>(
+                instance.nScenarios,
+                std::unordered_set<std::pair<int, int>,
+                                   boost::hash<std::pair<int, int>>>()));
     for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
         if (partialRoute.totalScenarioDemands[scenarioId] <=
             instance.capacity) {
@@ -402,14 +409,16 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
                 if (rc <= -1e-5) {
                     // For bound constraints, the dual is in the reduced cost.
                     betaDuals[{scenarioId, id}] = rc;
-                    dualObj += rc;
-                    selectedBetas[scenarioId].insert(id);
+                    sumBeta += rc;
+                    selectedBetas[scenarioId].insert({id, i});
                 }
             }
         }
     }
 
     // Next, we get the alpha coefs.
+    double dualObj = 0.0;
+    double sumAlpha = 0.0;
     GRBConstr *modelCons = 0;
     modelCons = model.getConstrs();
     double nuCoef = 0.0;
@@ -430,32 +439,42 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
 
             // Check if we need to update the duals (this is tricky, see the
             // paper).
-            double supportSize =
-                static_cast<double>(selectedBetas[scenarioId].size());
+            double supportSize = 0.0;
+            for (const auto &[id, i] : selectedBetas[scenarioId]) {
+                if (i >= startIdx && i < endIdx) {
+                    supportSize += 1.0;
+                }
+            }
 
             if (rhs - supportSize <= 0.0) {
                 assert(std::abs(rhs - supportSize) <= 1e-6);
 
                 // Compute step size.
-                std::vector<int> currSupport;
-                currSupport.reserve(selectedBetas[scenarioId].size());
                 double stepSize = alpha;
-                for (int id : selectedBetas[scenarioId]) {
-                    stepSize = std::min(stepSize, betaDuals[{scenarioId, id}]);
+                for (const auto &[id, i] : selectedBetas[scenarioId]) {
+                    if (i >= startIdx && i < endIdx) {
+                        stepSize = std::min(
+                            stepSize, std::abs(betaDuals[{scenarioId, id}]));
+                    }
                 }
 
                 // Update beta coefs and support.
                 alpha -= stepSize;
                 for (auto it = selectedBetas[scenarioId].begin();
                      it != selectedBetas[scenarioId].end();) {
-                    int id = *it;
-                    std::pair<int, int> key{scenarioId, id};
+                    const auto &[id, i] = *it;
+                    if (i < startIdx || i >= endIdx) {
+                        ++it;
+                        continue;
+                    }
 
+                    std::pair<int, int> key{scenarioId, id};
                     auto mapIt = betaDuals.find(key);
                     assert(mapIt != betaDuals.end());
 
                     auto &beta = mapIt->second;
                     beta += stepSize;
+                    sumBeta += stepSize;
 
                     if (std::abs(beta) <= 1e-5) {
                         it = selectedBetas[scenarioId].erase(it);
@@ -470,13 +489,15 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
             if (alpha >= 1e-6) {
                 alphaDuals[t] = alpha;
             }
+            sumAlpha += alpha;
 
             // Update dual obj.
             dualObj += alpha * rhs;
         }
     }
     delete[] modelCons;
-
+    dualObj += sumBeta;
     assert(std::abs(dualObj - primalObj) <= 1e-6);
+    assert(sumAlpha <= primalObj + 1e-6);
     return primalObj;
 }

@@ -341,7 +341,7 @@ void PartialRouteSeparator::setCutCoefficientsFromDual(
         }
     }
 
-    // Check if the cut dominates the ILS cut.
+    // Check that the cut dominates the ILS cut.
     for (size_t i = 0; i < partialRoute.entries.size(); i++) {
         for (int id : partialRoute.entries[i].vertices) {
             Node v = instance.g.nodeFromId(id);
