@@ -69,7 +69,8 @@ void NodeRecourseModel::setBasicModel() {
     // Some other parameters.
     model.getEnv().set(GRB_DoubleParam_TimeLimit, params.timeLimit);
     model.getEnv().set(GRB_IntParam_Threads, 1);
-    model.getEnv().set(GRB_DoubleParam_MIPGap, 1e-6);
+    model.getEnv().set(GRB_DoubleParam_MIPGap, 1e-7);
+    model.set(GRB_DoubleParam_FeasibilityTol, 1e-7);
 
     // Set x variables.
     for (EdgeIt e(instance.g); e != INVALID; ++e) {

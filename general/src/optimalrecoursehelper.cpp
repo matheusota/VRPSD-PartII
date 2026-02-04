@@ -389,14 +389,8 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
     // This auxiliary map stores the vertices id and the indices in the partial
     // route.
     double sumBeta = 0.0;
-    std::vector<std::unordered_set<std::pair<int, int>,
-                                   boost::hash<std::pair<int, int>>>>
-        selectedBetas(
-            std::vector<std::unordered_set<std::pair<int, int>,
-                                           boost::hash<std::pair<int, int>>>>(
-                instance.nScenarios,
-                std::unordered_set<std::pair<int, int>,
-                                   boost::hash<std::pair<int, int>>>()));
+    std::vector<std::vector<std::pair<int, int>>> selectedBetas(
+        instance.nScenarios, std::vector<std::pair<int, int>>());
     for (int scenarioId = 0; scenarioId < instance.nScenarios; scenarioId++) {
         if (partialRoute.totalScenarioDemands[scenarioId] <=
             instance.capacity) {
@@ -410,7 +404,7 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
                     // For bound constraints, the dual is in the reduced cost.
                     betaDuals[{scenarioId, id}] = rc;
                     sumBeta += rc;
-                    selectedBetas[scenarioId].insert({id, i});
+                    selectedBetas[scenarioId].push_back({id, i});
                 }
             }
         }
