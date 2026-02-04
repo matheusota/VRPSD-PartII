@@ -27,8 +27,8 @@ set(MY_LINK_FLAGS "-lm -lpthread -lboost_system ")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MY_LINK_FLAGS}")
 
 # Debug and Release specific flags.
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 
 # External packages libraries.
 list(APPEND CMAKE_MODULE_PATH "${SVRP_SOURCE_DIR}/cmake")
