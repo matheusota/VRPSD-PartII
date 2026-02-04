@@ -17,7 +17,9 @@ endif()
 add_compile_options(-m64 -no-pie -w -mtune=native ${ABI_FLAG})
 
 # Enable LEMON assertions in Debug mode
-add_compile_definitions(LEMON_ENABLE_ASSERTS)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(LEMON_ENABLE_ASSERTS)
+endif()
 
 # Warnings add_compile_options(-Wall -Wextra -Wpedantic)
 # add_link_options(-fsanitize=address -fno-omit-frame-pointer)
