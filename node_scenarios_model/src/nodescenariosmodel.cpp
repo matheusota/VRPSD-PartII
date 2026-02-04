@@ -59,8 +59,6 @@ void NodeScenariosModel::setBasicModel() {
     model.getEnv().set(GRB_IntParam_Cuts, 0);
     model.getEnv().set(GRB_IntParam_Presolve, 2);
     model.getEnv().set(GRB_IntParam_Method, 1);
-    model.getEnv().set(GRB_DoubleParam_MIPGap, 1e-7);
-    model.set(GRB_DoubleParam_FeasibilityTol, 1e-7);
 
     // Set x variables.
     for (EdgeIt e(instance.g); e != INVALID; ++e) {
@@ -449,7 +447,7 @@ double NodeScenariosModel::buildLagrangianCutAndGetDualObj() {
 
     // Now we construct the Lagrangian cut.
     CutData cutData;
-    cutData.RHS = RHS;
+    cutData.RHS = RHS - 1e-6; // numerical safeguard.
     cutData.sense = '>';
     cutData.LHS = RHS - 10; // some dummy value.
     cutData.name = "LagrangianCut";

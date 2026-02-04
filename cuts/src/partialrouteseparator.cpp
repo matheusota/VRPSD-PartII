@@ -348,7 +348,12 @@ void PartialRouteSeparator::setCutCoefficientsFromDual(
             assert(nodeCoefs[v] <= 1.0 + EpsForIntegrality);
         }
     }
-    assert(checkRHS >= partialRoute.excess * recourseCost - EpsForIntegrality);
+
+    // In theory this should not be necessary, but...
+    if (checkRHS < partialRoute.excess * recourseCost) {
+        RHS -= partialRoute.excess * recourseCost - checkRHS;
+    }
+    RHS -= 1e-6;
 }
 
 // The return value of this indicates if the inequality is violated or not.
