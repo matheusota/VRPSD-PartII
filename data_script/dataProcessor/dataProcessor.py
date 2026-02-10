@@ -43,7 +43,9 @@ def getProcessedTable(inputFile):
                 aux = line[indexMap[key]]
                 aux = aux.strip()
 
-                if key not in ["Algorithm", "Instance"]:
+                if key == "Solved":
+                    table[instance][algorithm][key] = True if aux == "1" else False
+                elif key not in ["Algorithm", "Instance"]:
                     table[instance][algorithm][key] = float(aux)
 
         i += 1
@@ -51,19 +53,25 @@ def getProcessedTable(inputFile):
     return table
 
 
-def setGapInTables(table, instances, algorithms, timelimit):
+def setGapInTables(table, instances, algorithms):
     # For each instance, we get the best UB and set the gap accordingly.
     for instance in instances:
         bestUB = 1e9
+
+        if instance not in table:
+            continue
 
         for alg in algorithms:
             if alg in table[instance]:
                 bestUB = min(bestUB, table[instance][alg]["Model Solution Cost"])
 
         for alg in algorithms:
+            if alg not in table[instance]:
+                continue
+
             if (
                 table[instance][alg]["Node Count"] <= 1
-                and table[instance][alg]["Time (s)"] <= timelimit
+                and table[instance][alg]["Solved"]
             ):
                 table[instance][alg]["Root Lower Bound"] = bestUB
 
@@ -95,6 +103,9 @@ def printAverages(table, instances, algorithms, timeLimit):
 
     i = 0
     for instance in instances:
+        if instance not in table:
+            continue
+
         for alg in algorithms:
             if alg not in table[instance]:
                 continue
@@ -113,7 +124,7 @@ def printAverages(table, instances, algorithms, timeLimit):
             ]
             i += 1
 
-    print(df)
+    # print(df)
     print("\nAverages\n")
     print(
         df.groupby(["Algorithm"])[

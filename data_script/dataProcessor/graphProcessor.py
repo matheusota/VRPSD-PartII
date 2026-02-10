@@ -20,34 +20,57 @@ colors = [
 ]
 
 
-def createGraph(output, table, instances, algorithms, graphType, timeLimit):
+def createPaper1Graph(
+    ccvrp_table,
+    jabali_table,
+    ccvrp_instances,
+    jabali_instances,
+    algorithms,
+    timelimit,
+    output,
+):
     warnings.simplefilter(action="ignore", category=FutureWarning)
 
     xLabel = {"time": "Time (s)", "gap": "Root Gap (\\%)", "node": "Node Count"}
 
-    # Set pandas dataframe.
+    # Set pandas dataframes.
     df = pd.DataFrame(
-        columns=["Instance", "Algorithm", "Time (s)", "Root Gap (\\%)", "Node Count"]
+        columns=[
+            "InstanceType",
+            "Instance",
+            "Algorithm",
+            "Time (s)",
+            "Root Gap (\\%)",
+            "Node Count",
+        ]
     )
 
     i = 0
-    n_instances = 0
-    for instance in instances:
-        n_instances += 1
-        for alg in algorithms:
-            if alg not in table[instance]:
+    for instanceType in ["CCVRP", "Jabali"]:
+        instances = ccvrp_instances if instanceType == "CCVRP" else jabali_instances
+        table = ccvrp_table if instanceType == "CCVRP" else jabali_table
+
+        for instance in instances:
+            if instance not in table:
                 continue
 
-            df.loc[i] = [
-                instance,
-                alg,
-                table[instance][alg]["Time (s)"],
-                table[instance][alg]["Gap"],
-                table[instance][alg]["Node Count"],
-            ]
-            i += 1
+            for alg in algorithms:
+                if alg not in table[instance]:
+                    continue
 
-    print("Considered instances: " + str(n_instances) + " / " + str(len(instances)))
+                df.loc[i] = [
+                    instanceType,
+                    instance,
+                    alg,
+                    table[instance][alg]["Time (s)"],
+                    table[instance][alg]["Gap"],
+                    table[instance][alg]["Node Count"],
+                ]
+                i += 1
+
+    # Number of instances for each type
+    n_ccvrp = len(ccvrp_instances)
+    n_jabali = len(jabali_instances)
 
     # Set some plot parameters.
     pgf_with_custom_preamble = {
@@ -69,185 +92,253 @@ def createGraph(output, table, instances, algorithms, graphType, timeLimit):
     plt.rc("xtick", labelsize=40)
     plt.rc("ytick", labelsize=40)
 
-    ax = plt.subplot(1, 1, 1)
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(38, 15))
 
-    # Create x ticks.
-    xTicks = list(range(1, timeLimit))
-    if graphType == "gap":
-        xTicks = [x * 0.1 for x in range(0, 501)]
-    if graphType == "node":
-        xTicks = [x for x in range(1, 30000)]
-        ax.set_xscale("log")
+    # Define x ticks for both graph types
+    graphTypes = ["time", "gap"]
+    axes = [ax1, ax2]
+    xTicksDict = {
+        "time": list(range(1, timelimit)),
+        "gap": [x * 0.1 for x in range(0, 501)],
+    }
 
-    # Plot lines.
-    for alg in algorithms:
-        ratioList = []
+    # Plot lines for each graph type
+    for graphType, ax in zip(graphTypes, axes):
+        xTicks = xTicksDict[graphType]
 
-        for x in xTicks:
-            auxDf = df.loc[
-                (df["Algorithm"] == alg) & (df[xLabel[graphType]] <= x - 1e-6)
-            ]
-            auxDf2 = df.loc[
-                (df["Algorithm"] == alg)
-                & (df[xLabel[graphType]] >= (x - 1) + 1e-6)
-                & (df[xLabel[graphType]] <= x - 1e-6)
-            ]
-            if graphType == "node":
-                auxDf = auxDf.loc[(df["Time (s)"] <= timeLimit - 1e-6)]
+        for alg in algorithms:
+            ratioList = []
+            for x in xTicks:
+                # Count instances from CCVRP
+                ccvrp_count = df.loc[
+                    (df["Algorithm"] == alg)
+                    & (df["InstanceType"] == "CCVRP")
+                    & (df[xLabel[graphType]] <= x - 1e-6)
+                ].shape[0]
 
-            ratioList.append(float(auxDf.shape[0]) / n_instances)
+                # Count instances from Jabali
+                jabali_count = df.loc[
+                    (df["Algorithm"] == alg)
+                    & (df["InstanceType"] == "Jabali")
+                    & (df[xLabel[graphType]] <= x - 1e-6)
+                ].shape[0]
 
-        ax.step(
-            xTicks,
-            ratioList,
-            dashes[algorithms.index(alg) % len(dashes)],
-            marker=markers[algorithms.index(alg) % len(markers)],
-            markersize=20,
-            markevery=0.1,
-            fillstyle="full",
-            color=colors[algorithms.index(alg) % len(colors)],
-            label="\\textsc{" + alg.lower() + "}",
-            linewidth=3,
-            where="pre",
-        )
+                # Compute weighted average.
+                ccvrp_ratio = ccvrp_count / n_ccvrp if n_ccvrp > 0 else 0
+                jabali_ratio = jabali_count / n_jabali if n_jabali > 0 else 0
+                weighted_ratio = 0.5 * ccvrp_ratio + 0.5 * jabali_ratio
 
-    # Set some other parameters and save figure.
-    rcParams.update({"font.size": 50})
-    ax.yaxis.grid(color="gray", linestyle="dashed")
-    ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
-    ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+                ratioList.append(weighted_ratio)
 
-    plt.rcParams.update(pgf_with_custom_preamble)
-    plt.rc("xtick", labelsize=40)
-    plt.rc("ytick", labelsize=40)
-    # ax.set_xscale("log")
+            ax.step(
+                xTicks,
+                ratioList,
+                dashes[algorithms.index(alg) % len(dashes)],
+                marker=markers[algorithms.index(alg) % len(markers)],
+                markersize=30,
+                markevery=0.1,
+                fillstyle="full",
+                color=colors[algorithms.index(alg) % len(colors)],
+                label="\\textsc{" + alg.lower() + "}",
+                linewidth=5,
+                where="pre",
+            )
 
-    ax.legend(loc="best", ncol=1)
-    plt.xlabel(xLabel[graphType], fontsize=50)
-    plt.ylabel("Instances ratio", fontsize=50)
-    plt.ylim((-0.1, 1.1))
+        # Set parameters for each subplot
+        ax.yaxis.grid(color="gray", linestyle="dashed")
+        ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+        ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+        ax.set_xlabel(xLabel[graphType], fontsize=50)
+        ax.set_ylabel("Instances ratio", fontsize=50)
+        ax.set_ylim((-0.1, 1.1))
+
+    # Create a single legend below the plots
+    handles, labels = ax1.get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        ncol=len(algorithms),
+        fontsize=50,
+        bbox_to_anchor=(0.5, -0.02),
+    )
+
+    # Adjust layout to make room for the legend below
+    plt.tight_layout(rect=[0, 0.08, 1, 1], w_pad=3.0)
+    plt.subplots_adjust(wspace=0.2)
+
     plt.savefig(output, bbox_inches="tight", pad_inches=0.2)
+    plt.close()
 
 
-def createTimeAndGapGraph(output, table, instances, algorithms, timeLimit):
+def createPaper2Graph(
+    ccvrp_table,
+    ccvrp_table_basic,
+    jabali_table,
+    jabali_table_basic,
+    ccvrp_instances,
+    jabali_instances,
+    algorithms,
+    timelimit,
+    output,
+):
     warnings.simplefilter(action="ignore", category=FutureWarning)
 
-    # set pandas dataframe
+    xLabel = {"time": "Time (s)", "gap": "Root Gap (\\%)", "node": "Node Count"}
+
+    # Set pandas dataframes.
     df = pd.DataFrame(
         columns=[
+            "InstanceType",
             "Instance",
             "Algorithm",
             "Time (s)",
-            "Final Gap",
+            "Root Gap (\\%)",
             "Node Count",
+            "Basic",
         ]
     )
 
     i = 0
-    n_instances = len(instances)
-    for instance in instances:
-        for alg in algorithms:
-            df.loc[i] = [
-                instance,
-                alg,
-                table[instance][alg]["Time (s)"],
-                table[instance][alg]["Final Gap"],
-                table[instance][alg]["Node Count"],
-            ]
-            i += 1
+    for instanceType, isBasic in [
+        ("CCVRP", False),
+        ("CCVRP", True),
+        ("Jabali", False),
+        ("Jabali", True),
+    ]:
+        instances = ccvrp_instances if instanceType == "CCVRP" else jabali_instances
 
+        if instanceType == "CCVRP" and not isBasic:
+            table = ccvrp_table
+        elif instanceType == "CCVRP" and isBasic:
+            table = ccvrp_table_basic
+        elif instanceType == "Jabali" and not isBasic:
+            table = jabali_table
+        else:
+            table = jabali_table_basic
+
+        for instance in instances:
+            if instance not in table:
+                continue
+
+            for alg in algorithms:
+                if alg not in table[instance]:
+                    continue
+
+                df.loc[i] = [
+                    instanceType,
+                    instance,
+                    alg,
+                    table[instance][alg]["Time (s)"],
+                    table[instance][alg]["Gap"],
+                    table[instance][alg]["Node Count"],
+                    isBasic,
+                ]
+                i += 1
+
+    # Number of instances for each type
+    n_ccvrp = len(ccvrp_instances)
+    n_jabali = len(jabali_instances)
+
+    # Set some plot parameters.
     pgf_with_custom_preamble = {
-        "font.family": "serif",  # use serif/main font for text elements
-        "text.usetex": True,  # don't setup fonts from rc parameters
-        "figure.figsize": (35, 15),
+        "font.family": "serif",
+        "text.usetex": True,
+        "figure.figsize": (38, 15),
         "pgf.preamble": "\n".join(
             [
-                r"\\usepackage{units}",  # load additional packages
+                r"\\usepackage{units}",
                 r"\\usepackage{metalogo}",
-                r"\\usepackage{unicode-math}",  # unicode math setup
+                r"\\usepackage{unicode-math}",
                 r"\setmathfont{xits-math.otf}",
-                r"\setmainfont{Arial}",  # serif font via preamble
+                r"\setmainfont{Arial}",
             ]
         ),
     }
 
-    plt.rcParams.update(pgf_with_custom_preamble)
+    rcParams.update(pgf_with_custom_preamble)
     plt.rc("xtick", labelsize=40)
     plt.rc("ytick", labelsize=40)
-    timeTicks = list(range(1, timeLimit))
-    gapTicks = [x * 0.1 for x in range(0, 151)]
 
-    fig, axs = plt.subplots(1, 2, gridspec_kw={"width_ratios": [7, 3]})
-    axs[0].set_ylim((-0.1, 1.1))
+    # Create figure with two subplots (Normal vs Basic)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(38, 15))
 
-    axs[0].grid(axis="y", linestyle="--", alpha=0.7)
-    axs[0].spines["right"].set_visible(False)
+    # Define x ticks for time
+    xTicks = list(range(1, timelimit))
 
-    axs[0].set_xlabel("Time (s)", fontsize=50)
-    axs[0].set_ylabel("Instances Ratio", fontsize=50)
-    axs[0].set_xlim(1, timeLimit)  # or max_time
-    axs[0].grid(axis="x", linestyle="--", alpha=0.7)
+    # Plot for both Normal (left) and Basic (right) instances
+    for ax, isBasic, title in zip(
+        [ax1, ax2],
+        [False, True],
+        [
+            r"$\mathcal{X}_{\textsc{cvrp}}$",
+            r"$\mathcal{X}_{\textsc{sub}}$",
+        ],
+    ):
+        for alg in algorithms:
+            ratioList = []
+            for x in xTicks:
+                # Count instances from CCVRP
+                ccvrp_count = df.loc[
+                    (df["Algorithm"] == alg)
+                    & (df["InstanceType"] == "CCVRP")
+                    & (df["Basic"] == isBasic)
+                    & (df[xLabel["time"]] <= x - 1e-6)
+                ].shape[0]
 
-    axs[1].set_ylim((-0.1, 1.1))
+                # Count instances from Jabali
+                jabali_count = df.loc[
+                    (df["Algorithm"] == alg)
+                    & (df["InstanceType"] == "Jabali")
+                    & (df["Basic"] == isBasic)
+                    & (df[xLabel["time"]] <= x - 1e-6)
+                ].shape[0]
 
-    axs[1].grid(axis="y", linestyle="--", alpha=0.7)
-    # axs[1].yaxis.set_visible(False)
-    axs[1].tick_params(axis="y", which="both", left=False, right=True, labelsize=False)
+                # Compute weighted average
+                ccvrp_ratio = ccvrp_count / n_ccvrp if n_ccvrp > 0 else 0
+                jabali_ratio = jabali_count / n_jabali if n_jabali > 0 else 0
+                weighted_ratio = 0.5 * ccvrp_ratio + 0.5 * jabali_ratio
 
-    axs[1].spines["left"].set_visible(False)
+                ratioList.append(weighted_ratio)
 
-    axs[1].set_xlabel("Final Gap (\\%)", fontsize=50)
-    axs[1].set_xlim(0.1, 15.0)
-    axs[1].grid(axis="x", linestyle="--", alpha=0.7)
+            ax.step(
+                xTicks,
+                ratioList,
+                dashes[algorithms.index(alg) % len(dashes)],
+                marker=markers[algorithms.index(alg) % len(markers)],
+                markersize=30,
+                markevery=0.1,
+                fillstyle="full",
+                color=colors[algorithms.index(alg) % len(colors)],
+                label="\\textsc{" + alg.lower() + "}",
+                linewidth=5,
+                where="pre",
+            )
 
-    for alg in algorithms:
-        ratioListTime = []
-        ratioListGap = []
+        # Set parameters for each subplot
+        ax.yaxis.grid(color="gray", linestyle="dashed")
+        ax.yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+        ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+        ax.set_xlabel(xLabel["time"], fontsize=50)
+        ax.set_ylabel("Instances ratio", fontsize=50)
+        ax.set_ylim((-0.1, 1.1))
+        ax.set_title(title, fontsize=50, pad=25)
 
-        for x in timeTicks:
-            auxDf = df.loc[(df["Algorithm"] == alg) & (df["Time (s)"] <= x)]
-            ratioListTime.append(float(auxDf.shape[0]) / n_instances)
+    # Create a single legend below the plots
+    handles, labels = ax1.get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        ncol=len(algorithms),
+        fontsize=50,
+        bbox_to_anchor=(0.5, -0.02),
+    )
 
-        for x in gapTicks:
-            auxDf = df.loc[(df["Algorithm"] == alg) & (df["Final Gap"] <= x)]
-            ratioListGap.append(float(auxDf.shape[0]) / n_instances)
+    # Adjust layout to make room for the legend below
+    plt.tight_layout(rect=[0, 0.08, 1, 1], w_pad=3.0)
+    plt.subplots_adjust(wspace=0.2)
 
-        axs[0].step(
-            timeTicks,
-            ratioListTime,
-            dashes[algorithms.index(alg) % len(dashes)],
-            marker=markers[algorithms.index(alg) % len(markers)],
-            markersize=20,
-            markevery=0.1,
-            fillstyle="full",
-            color=colors[algorithms.index(alg) % len(colors)],
-            label=alg,
-            linewidth=3,
-            where="pre",
-        )
-
-        axs[1].step(
-            gapTicks,
-            ratioListGap,
-            dashes[algorithms.index(alg) % len(dashes)],
-            marker=markers[algorithms.index(alg) % len(markers)],
-            markersize=20,
-            markevery=(0.1, 0.1),
-            fillstyle="full",
-            color=colors[algorithms.index(alg) % len(colors)],
-            label=alg,
-            linewidth=3,
-            where="pre",
-        )
-
-    axs[0].axvline(
-        x=timeLimit, color="black", linewidth=4, linestyle="--"
-    )  # vertical line
-    rcParams.update({"font.size": 50})
-    axs[1].yaxis.grid(color="gray", linestyle="dashed")
-    axs[1].yaxis.set_major_formatter(FormatStrFormatter("%.2f"))
-    axs[1].xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
-    axs[1].legend(loc="lower right", ncol=1)
-    # axs[1].legend(bbox_to_anchor=(3.00, 1), loc="upper right", ncol=1)
-    plt.subplots_adjust(wspace=0)
     plt.savefig(output, bbox_inches="tight", pad_inches=0.2)
+    plt.close()
