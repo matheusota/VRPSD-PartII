@@ -17,10 +17,8 @@ typedef struct structParams {
     bool paradaSet = false;
     bool sriCuts = false;
     bool partialRouteCuts = false;
-    bool scenarioOptimalPRCuts = false;
     bool basicVRPSD = false;
     bool sriFlowSeparation = false;
     bool inOut = false;
-    bool projectedSRI = false;
 } Params;
 #endif // PARAMS_H

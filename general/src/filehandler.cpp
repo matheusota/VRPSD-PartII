@@ -179,24 +179,15 @@ bool addEntryToTable(const Params &params, const SVRPInstance &instance,
     if (params.partialRouteCuts) {
         algorithm += "-PR";
     }
-    if (params.scenarioOptimalPRCuts) {
-        algorithm += "-SCENOPT_CUTS";
-    }
-    if (params.basicVRPSD) {
-        algorithm += "-Basic";
-    }
     if (params.inOut) {
         algorithm += "-InOut";
     }
     if (params.sriFlowSeparation) {
         algorithm += "-FLOW";
     }
-    if (params.projectedSRI) {
-        algorithm += "-ProjectedSRI";
-    }
 
-    data << algorithm << " , " << params.inputFile << " , " << solution.cost
-         << " , " << solution.rootBound << " , "
+    data << algorithm << " , " << params.inputFile << " , " << params.basicVRPSD
+         << " , " << solution.cost << " , " << solution.rootBound << " , "
          << (std::abs(solution.cost - solution.rootBound) / solution.cost) *
                 100.0
          << " , " << solution.rootTime << " , " << solution.time << " , "
@@ -210,7 +201,8 @@ bool addEntryToTable(const Params &params, const SVRPInstance &instance,
          << solution.paradaSetCuts << " , " << solution.paradaTime << " , "
          << solution.sriCuts << " , " << solution.sriTime << " , "
          << solution.aggregatedSriCuts << " , " << solution.aggregatedSriTime
-         << " , " << (solution.solved ? 1 : 0) << std::endl;
+         << " , " << (solution.solved ? 1 : 0) << " , " << solution.cvrpFeasible
+         << std::endl;
 
     data.close();
     return true;

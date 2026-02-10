@@ -118,3 +118,36 @@ SVRPSolution::getEdgesInSolution(const SVRPInstance &instance) const {
 
     return edgesInRoutes;
 }
+
+void SVRPSolution::checkCVRPFeasible(const SVRPInstance &instance) {
+    std::vector<bool> visited(instance.n, false);
+
+    for (auto route : routes) {
+        double load = 0.0;
+
+        for (int id : route) {
+            Node v = instance.g.nodeFromId(id);
+            load += instance.demand[v];
+            if (visited[id]) {
+                cvrpFeasible = false;
+                return;
+            }
+            visited[id] = true;
+        }
+
+        if (load >= instance.capacity + 1e-9) {
+            cvrpFeasible = false;
+            return;
+        }
+    }
+
+    visited[0] = true;
+    for (int i = 0; i < instance.n; i++) {
+        if (!visited[i]) {
+            cvrpFeasible = false;
+            return;
+        }
+    }
+
+    cvrpFeasible = true;
+}

@@ -26,7 +26,6 @@ int main(int argc, const char *argv[]) {
         newParams.paradaSet = false;
         newParams.sriCuts = true;
         newParams.basicVRPSD = false;
-        newParams.scenarioOptimalPRCuts = false;
         NodeRecourseModel nodeRecourseModel1(instance, newParams);
         nodeRecourseModel1.solve(heuristicSolution);
     }
@@ -110,10 +109,6 @@ Params getParams(int argc, const char *argv[]) {
             cxxopts::value<bool>(params.paradaSet)->default_value("false"))(
             "scenarioOptimal", "Use scenario optimal recourse policy.",
             cxxopts::value<bool>()->default_value("false"))(
-            "prScenarioOptimal",
-            "Separate scenario optimal partial route cuts.",
-            cxxopts::value<bool>(params.scenarioOptimalPRCuts)
-                ->default_value("false"))(
             "basic",
             "Deactivate fixed number of routes and expected capacity "
             "constraints.",
@@ -122,9 +117,7 @@ Params getParams(int argc, const char *argv[]) {
             cxxopts::value<bool>(params.sriFlowSeparation)
                 ->default_value("false"))(
             "inout", "Use in and out separation.",
-            cxxopts::value<bool>(params.inOut)->default_value("false"))(
-            "projectedSRI", "Use projected SRIs.",
-            cxxopts::value<bool>(params.projectedSRI)->default_value("false"));
+            cxxopts::value<bool>(params.inOut)->default_value("false"));
 
         auto result = options.parse(argc, argv);
 
@@ -141,25 +134,12 @@ Params getParams(int argc, const char *argv[]) {
 
         if (result["scenarioOptimal"].as<bool>()) {
             params.policy = SCENARIO_OPTIMAL;
-            params.scenarioOptimalPRCuts = true;
-        }
-
-        if (params.projectedSRI) {
-            params.scenarioOptimalPRCuts = true;
         }
     } catch (std::exception &e) {
         std::cerr << "Program Options Error: " << e.what() << "\n";
         exit(1);
     } catch (...) {
         std::cerr << "Unknown error!" << "\n";
-        exit(1);
-    }
-
-    if (params.scenarioOptimalPRCuts && !params.partialRouteCuts) {
-        std::cerr << "Error: "
-                  << "improved partial routes can only be used when partial "
-                     "routes are used."
-                  << std::endl;
         exit(1);
     }
 

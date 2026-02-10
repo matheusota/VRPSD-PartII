@@ -16,31 +16,7 @@ int PartialRouteSeparator::separatePartialRouteCuts(
     for (const PartialRoute &partialRoute : partialRoutes) {
         assert(partialRoute.excess >= EpsForIntegrality);
 
-        // Get partial route costs.
-        NodeValueMap nodeRecourseMap(instance.g, 0.0);
-        double partialRouteClassicalCost =
-            instance.classicalRecourseHelper
-                .getPartialRouteRecourseAndFailureNodes(partialRoute,
-                                                        nodeRecourseMap);
-        std::unordered_map<std::pair<int, int>, double,
-                           boost::hash<std::pair<int, int>>>
-            betaDuals;
-        std::unordered_map<std::tuple<int, int, int>, double,
-                           boost::hash<std::tuple<int, int, int>>>
-            alphaDuals;
-        double partialRouteOptimalCost = 0.0;
-        if (params.scenarioOptimalPRCuts) {
-            partialRouteOptimalCost =
-                instance.optimalRecourseHelper.getPartialRouteRecourseCost(
-                    partialRoute, betaDuals, alphaDuals);
-        }
-
-        if (partialRouteOptimalCost <= EpsForIntegrality &&
-            partialRouteClassicalCost <= EpsForIntegrality) {
-            continue;
-        }
-
-        // Pass through all nodes in the partial route.
+        // Pass through all nodes in the partial route to get the current cost.
         double currCost = 0.0;
         NodeValueMap nodeCoefs(instance.g, 0.0);
         for (const PartialRouteEntry &entry : partialRoute.entries) {
@@ -51,36 +27,61 @@ int PartialRouteSeparator::separatePartialRouteCuts(
             }
         }
 
-        // Compare costs.
-        bool useSimpleAdherenceCuts = false;
-        double recourseCostToUse = partialRouteClassicalCost;
-        if (params.policy == SCENARIO_OPTIMAL ||
-            currCost + EpsForIntegrality <= partialRouteOptimalCost) {
-            recourseCostToUse = partialRouteOptimalCost;
-            useSimpleAdherenceCuts = true;
+        // If using SRIs or using the scenario-optimal policy, we check for
+        // violated scenario-optimal inequalities.
+        if (params.sriCuts || params.policy == SCENARIO_OPTIMAL) {
+            std::unordered_map<std::pair<int, int>, double,
+                               boost::hash<std::pair<int, int>>>
+                betaDuals;
+            std::unordered_map<std::tuple<int, int, int>, double,
+                               boost::hash<std::tuple<int, int, int>>>
+                alphaDuals;
+            double partialRouteOptimalCost =
+                instance.optimalRecourseHelper.getPartialRouteRecourseCost(
+                    partialRoute, betaDuals, alphaDuals, params.sriCuts);
+
+            if (currCost <= partialRouteOptimalCost - EpsForIntegrality) {
+                // Setup the coefficients for the inequality.
+                double RHS = 0.0;
+                EdgeValueMap edgeCoefs(instance.g, 0.0);
+                if (params.sriCuts) {
+                    setCutCoefficientsFromDual(
+                        partialRoute, xValue, partialRouteOptimalCost,
+                        betaDuals, alphaDuals, edgeCoefs, nodeCoefs, RHS);
+                } else {
+                    setCutCoefficientsNew(partialRoute, partialRouteOptimalCost,
+                                          edgeCoefs, RHS, true);
+                }
+
+                // Add inequality.
+                if (addCutFromCoefs(xValue, recourseValue, edgeCoefs, nodeCoefs,
+                                    RHS, separatedCuts)) {
+                    nSepCuts++;
+                }
+                continue;
+            }
         }
 
-        if (currCost >= recourseCostToUse - EpsForIntegrality) {
-            continue;
-        }
+        if (params.policy == CLASSICAL) {
+            NodeValueMap nodeRecourseMap(instance.g, 0.0);
+            double partialRouteClassicalCost =
+                instance.classicalRecourseHelper
+                    .getPartialRouteRecourseAndFailureNodes(partialRoute,
+                                                            nodeRecourseMap);
 
-        // Setup the coefficients for the inequality.
-        double RHS = 0.0;
-        EdgeValueMap edgeCoefs(instance.g, 0.0);
-        if (params.projectedSRI) {
-            setCutCoefficientsFromDual(partialRoute, xValue, recourseCostToUse,
-                                       betaDuals, alphaDuals, edgeCoefs,
-                                       nodeCoefs, RHS);
-        } else {
-            setCutCoefficientsNew(partialRoute, recourseCostToUse, edgeCoefs,
-                                  RHS, useSimpleAdherenceCuts,
-                                  params.scenarioOptimalPRCuts);
-        }
+            if (currCost <= partialRouteClassicalCost - EpsForIntegrality) {
+                // Setup the coefficients for the inequality.
+                double RHS = 0.0;
+                EdgeValueMap edgeCoefs(instance.g, 0.0);
+                setCutCoefficientsNew(partialRoute, partialRouteClassicalCost,
+                                      edgeCoefs, RHS, false);
 
-        // Add inequality.
-        if (addCutFromCoefs(xValue, recourseValue, edgeCoefs, nodeCoefs, RHS,
-                            separatedCuts)) {
-            nSepCuts++;
+                // Add inequality.
+                if (addCutFromCoefs(xValue, recourseValue, edgeCoefs, nodeCoefs,
+                                    RHS, separatedCuts)) {
+                    nSepCuts++;
+                }
+            }
         }
     }
 
@@ -125,7 +126,7 @@ void PartialRouteSeparator::setCoefficientsInsideSet(
 
 void PartialRouteSeparator::setCutCoefficientsNew(
     const PartialRoute &partialRoute, double recourseCost,
-    EdgeValueMap &edgeCoefs, double &RHS, bool simpleAdherence, bool improved) {
+    EdgeValueMap &edgeCoefs, double &RHS, bool simpleAdherence) {
     // Get number of nodes in the partial route.
     int countPartialRouteNodes = 0;
     int partialRouteSize = static_cast<int>(partialRoute.entries.size());
@@ -139,33 +140,16 @@ void PartialRouteSeparator::setCutCoefficientsNew(
 
     // Set alphas and betas.
     if (partialRouteSize == 3) {
-        if (!improved ||
-            static_cast<int>(partialRoute.entries[0].vertices.size()) == 1 ||
-            static_cast<int>(
-                partialRoute.entries[partialRouteSize - 1].vertices.size()) ==
-                1) {
-            alpha[1] += 1;
-            RHS +=
-                1.0 - static_cast<int>(partialRoute.entries[1].vertices.size());
-        }
+        alpha[1] += 1;
+        RHS += 1.0 - static_cast<int>(partialRoute.entries[1].vertices.size());
     } else if (partialRouteSize >= 2) {
-        if (!improved ||
-            static_cast<int>(partialRoute.entries[0].vertices.size()) == 1) {
-            alpha[1] += 1;
-            RHS +=
-                1.0 - static_cast<int>(partialRoute.entries[1].vertices.size());
-        }
+        alpha[1] += 1;
+        RHS += 1.0 - static_cast<int>(partialRoute.entries[1].vertices.size());
 
-        if (!improved ||
-            static_cast<int>(
-                partialRoute.entries[partialRouteSize - 1].vertices.size()) ==
-                1) {
-            alpha[partialRouteSize - 2] += 1;
-            RHS +=
-                1.0 -
-                static_cast<int>(
-                    partialRoute.entries[partialRouteSize - 2].vertices.size());
-        }
+        alpha[partialRouteSize - 2] += 1;
+        RHS += 1.0 -
+               static_cast<int>(
+                   partialRoute.entries[partialRouteSize - 2].vertices.size());
     }
 
     // Set coefficients of arcs incident to the depot.
@@ -349,10 +333,8 @@ void PartialRouteSeparator::setCutCoefficientsFromDual(
         }
     }
 
-    // In theory this should not be necessary, but...
-    if (checkRHS < partialRoute.excess * recourseCost) {
-        RHS -= partialRoute.excess * recourseCost - checkRHS;
-    }
+    // We subtract from RHS to be safe from numerical errors...
+    assert(checkRHS >= partialRoute.excess * recourseCost - 1e-2);
     RHS -= 1e-6;
 }
 

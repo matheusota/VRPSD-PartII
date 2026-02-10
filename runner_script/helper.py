@@ -2,13 +2,13 @@ import os
 import sys
 
 header_string = (
-    "Algorithm , Instance , Model Solution Cost, Root Lower Bound , "
+    "Algorithm , Instance , Basic , Model Solution Cost, Root Lower Bound , "
     + "Root Gap (%), Root Time (s) , Time (s), K , Deterministic Cost , "
     + "Model Recourse Cost , Optimal Recourse Cost , Classical Recourse Cost , "
     + "Upper Bound , Lower Bound , Gap (%) , Node Count , CVRPSEP Cuts , "
     + "CVRPSEP Time (s) , Partial Route Cuts , Partial Route Time (s) , "
     + "Parada Set Cuts , Parada Time (s) , SRI Cuts , SRI Time (s) , "
-    + "Aggregated SRI Cuts , Aggregated SRI Time (s) , Solved"
+    + "Aggregated SRI Cuts , Aggregated SRI Time (s) , Solved , CVRP Feasible"
 )
 header_list = [s.strip() for s in header_string.split(",")]
 

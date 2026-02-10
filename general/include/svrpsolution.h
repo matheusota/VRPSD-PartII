@@ -31,6 +31,7 @@ class SVRPSolution {
     double gap = 0.0;
     double rootTime = 0.0;
     bool solved = false;
+    bool cvrpFeasible = false;
 
     void print() const;
     void save(std::string outputName) const;
@@ -39,5 +40,6 @@ class SVRPSolution {
     void setRoutesFromSolution(const SVRPInstance &instance,
                                ArcIntMap &edgeCount);
     std::vector<Edge> getEdgesInSolution(const SVRPInstance &instance) const;
+    void checkCVRPFeasible(const SVRPInstance &instance);
 };
 #endif // SVRPSOLUTION_H

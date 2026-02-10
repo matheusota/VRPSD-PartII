@@ -224,6 +224,7 @@ void NodeRecourseModel::setSolution(SVRPSolution &solution) {
             }
         }
         solution.setRoutesFromSolution(instance, edgeCount);
+        solution.checkCVRPFeasible(instance);
 
         for (NodeIt v(instance.g); v != INVALID; ++v) {
             if (instance.g.id(v) != instance.depot &&

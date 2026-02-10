@@ -29,16 +29,16 @@ class OptimalRecourseHelper {
         std::unordered_map<std::pair<int, int>, double,
                            boost::hash<std::pair<int, int>>> &betaDuals,
         std::unordered_map<std::tuple<int, int, int>, double,
-                           boost::hash<std::tuple<int, int, int>>> &alphaDuals)
-        const;
+                           boost::hash<std::tuple<int, int, int>>> &alphaDuals,
+        bool needDuals) const;
     double getPartialRouteRecourseCost(const PartialRoute &partialRoute) const;
     double getPartialRouteRecourseCost(
         const PartialRoute &partialRoute,
         std::unordered_map<std::pair<int, int>, double,
                            boost::hash<std::pair<int, int>>> &betaDuals,
         std::unordered_map<std::tuple<int, int, int>, double,
-                           boost::hash<std::tuple<int, int, int>>> &alphaDuals)
-        const;
+                           boost::hash<std::tuple<int, int, int>>> &alphaDuals,
+        bool needDuals) const;
     double getPartialRouteRecourseCostInScenarioWithDP(
         const PartialRoute &partialRoute, int scenarioId) const;
 

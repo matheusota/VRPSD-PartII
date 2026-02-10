@@ -76,7 +76,8 @@ double OptimalRecourseHelper::getPartialRouteRecourseCost(
     std::unordered_map<std::tuple<int, int, int>, double,
                        boost::hash<std::tuple<int, int, int>>>
         alphaDuals;
-    return getPartialRouteRecourseCost(partialRoute, betaDuals, alphaDuals);
+    return getPartialRouteRecourseCost(partialRoute, betaDuals, alphaDuals,
+                                       false);
 }
 
 double OptimalRecourseHelper::getPartialRouteRecourseCost(
@@ -84,8 +85,8 @@ double OptimalRecourseHelper::getPartialRouteRecourseCost(
     std::unordered_map<std::pair<int, int>, double,
                        boost::hash<std::pair<int, int>>> &betaDuals,
     std::unordered_map<std::tuple<int, int, int>, double,
-                       boost::hash<std::tuple<int, int, int>>> &alphaDuals)
-    const {
+                       boost::hash<std::tuple<int, int, int>>> &alphaDuals,
+    bool needDuals) const {
     if (partialRoute.entries.empty()) {
         return 0.0;
     }
@@ -107,8 +108,8 @@ double OptimalRecourseHelper::getPartialRouteRecourseCost(
     // totalDPTime += time1;
 
     auto started = chrono::high_resolution_clock::now();
-    double total2 =
-        getPartialRouteRecourseCostWithLP(partialRoute, betaDuals, alphaDuals);
+    double total2 = getPartialRouteRecourseCostWithLP(partialRoute, betaDuals,
+                                                      alphaDuals, needDuals);
     auto done = chrono::high_resolution_clock::now();
     double time2 =
         static_cast<double>(
@@ -225,8 +226,8 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
     std::unordered_map<std::pair<int, int>, double,
                        boost::hash<std::pair<int, int>>> &betaDuals,
     std::unordered_map<std::tuple<int, int, int>, double,
-                       boost::hash<std::tuple<int, int, int>>> &alphaDuals)
-    const {
+                       boost::hash<std::tuple<int, int, int>>> &alphaDuals,
+    bool needDuals) const {
     GRBModel model(env);
     model.set(GRB_StringAttr_ModelName, "OptimalRecourseModel");
     model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
@@ -382,6 +383,9 @@ double OptimalRecourseHelper::getPartialRouteRecourseCostWithLP(
     }
 
     double primalObj = model.get(GRB_DoubleAttr_ObjVal);
+    if (!needDuals) {
+        return primalObj;
+    }
 
     // Now we need to construct a dual solution with minimum support.
     // First, we get the beta coefs.
