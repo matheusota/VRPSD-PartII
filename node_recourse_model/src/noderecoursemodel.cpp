@@ -69,7 +69,6 @@ void NodeRecourseModel::setBasicModel() {
     // Some other parameters.
     model.getEnv().set(GRB_DoubleParam_TimeLimit, params.timeLimit);
     model.getEnv().set(GRB_IntParam_Threads, 1);
-    model.set(GRB_DoubleParam_FeasibilityTol, 1e-9);
 
     // Set x variables.
     for (EdgeIt e(instance.g); e != INVALID; ++e) {
@@ -254,12 +253,15 @@ void NodeRecourseModel::setSolution(SVRPSolution &solution) {
                   << endl;
         std::cout << "Root bound: " << solution.rootBound << std::endl;
 
-        if (params.policy == SCENARIO_OPTIMAL) {
-            assert(std::abs(solution.modelRecourseCost -
-                            solution.optimalRecourseCost) <= 1e-4);
-        } else {
-            assert(std::abs(solution.modelRecourseCost -
-                            solution.recourseCost) <= 1e-4);
+        // We check the recourse cost only when the problem was solved.
+        if (solution.solved) {
+            if (params.policy == SCENARIO_OPTIMAL) {
+                assert(std::abs(solution.modelRecourseCost -
+                                solution.optimalRecourseCost) <= 1e-4);
+            } else {
+                assert(std::abs(solution.modelRecourseCost -
+                                solution.recourseCost) <= 1e-4);
+            }
         }
     } else {
         std::cout << "Did not find optimal solution." << std::endl;
